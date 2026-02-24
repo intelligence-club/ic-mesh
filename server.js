@@ -30,6 +30,7 @@ const Database = require('better-sqlite3');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const storage = require('./lib/storage');
+const connect = require('./lib/stripe-connect');
 
 const PORT = 8333;
 const DATA_DIR = path.join(__dirname, 'data');
@@ -614,16 +615,62 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    // ---- Cashout request ----
+    // ---- Node onboarding (Stripe Connect) ----
+    if (method === 'POST' && pathname === '/nodes/onboard') {
+      const data = await parseBody(req);
+      const { nodeId, email, country } = data;
+      if (!nodeId || !email) return json(res, { error: 'nodeId and email required' }, 400);
+      
+      const node = stmts.getNode.get(nodeId);
+      if (!node) return json(res, { error: 'Node not found. Register first.' }, 404);
+      
+      // If already has Stripe account, return new onboarding link
+      if (node.stripe_account_id) {
+        try {
+          const status = await connect.checkAccountStatus(node.stripe_account_id);
+          if (status.payouts_enabled) {
+            return json(res, { ok: true, status: 'already_onboarded', payouts_enabled: true, email: status.email });
+          }
+          // Need to complete onboarding
+          const url = await connect.createOnboardingLink(node.stripe_account_id, nodeId);
+          return json(res, { ok: true, status: 'incomplete', onboarding_url: url });
+        } catch (e) {
+          return json(res, { error: 'Stripe error: ' + e.message }, 500);
+        }
+      }
+      
+      // Create new Stripe Connect account
+      try {
+        const result = await connect.createConnectedAccount(nodeId, email, country || 'US');
+        db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?').run(result.stripe_account_id, email, nodeId);
+        console.log(`◉ STRIPE CONNECT: ${node.name} (${nodeId.slice(0,8)}) → ${result.stripe_account_id}`);
+        return json(res, { ok: true, ...result });
+      } catch (e) {
+        console.log(`⚠ Stripe Connect error: ${e.message}`);
+        return json(res, { error: 'Stripe onboarding failed: ' + e.message }, 500);
+      }
+    }
+
+    // ---- Node onboarding status ----
+    if (method === 'GET' && pathname.match(/^\/nodes\/[^/]+\/stripe$/)) {
+      const nodeId = pathname.split('/')[2];
+      const node = stmts.getNode.get(nodeId);
+      if (!node) return json(res, { error: 'Node not found' }, 404);
+      if (!node.stripe_account_id) return json(res, { status: 'not_onboarded', message: 'POST /nodes/onboard to set up payouts' });
+      try {
+        const status = await connect.checkAccountStatus(node.stripe_account_id);
+        return json(res, { nodeId, stripe_account_id: node.stripe_account_id, ...status });
+      } catch (e) {
+        return json(res, { error: e.message }, 500);
+      }
+    }
+
+    // ---- Cashout request (with Stripe Connect auto-transfer) ----
     if (method === 'POST' && pathname === '/cashout') {
       const data = await parseBody(req);
       const { nodeId, amount_ints, payout_email } = data;
-      const MIN_CASHOUT = 1000; // 1000 ints = $0.80
-      const SELL_RATE = 0.0008; // $/int
 
-      if (!nodeId || !payout_email) {
-        return json(res, { error: 'nodeId and payout_email required' }, 400);
-      }
+      if (!nodeId) return json(res, { error: 'nodeId required' }, 400);
 
       const entry = stmts.getPayout.get(nodeId);
       if (!entry) return json(res, { error: 'No earnings found for this node' }, 404);
@@ -631,32 +678,53 @@ const server = http.createServer(async (req, res) => {
       const available = entry.earned_ints - (entry.cashed_out_ints || 0);
       const requestedInts = amount_ints ? Math.min(parseInt(amount_ints), available) : available;
 
-      if (requestedInts < MIN_CASHOUT) {
+      if (requestedInts < connect.MIN_CASHOUT_INTS) {
         return json(res, {
-          error: `Minimum cashout is ${MIN_CASHOUT} ints ($${(MIN_CASHOUT * SELL_RATE).toFixed(2)})`,
+          error: `Minimum cashout is ${connect.MIN_CASHOUT_INTS} ints ($${(connect.MIN_CASHOUT_INTS * connect.SELL_RATE).toFixed(2)})`,
           available_ints: available,
-          minimum_ints: MIN_CASHOUT
+          minimum_ints: connect.MIN_CASHOUT_INTS
         }, 400);
       }
 
-      const amountUsd = requestedInts * SELL_RATE;
+      const amountUsd = +(requestedInts * connect.SELL_RATE).toFixed(2);
+      const node = stmts.getNode.get(nodeId);
 
-      // Record the cashout request
-      db.prepare(`INSERT INTO cashouts (nodeId, amount_ints, amount_usd, payout_email) VALUES (?, ?, ?, ?)`).run(nodeId, requestedInts, amountUsd, payout_email);
+      // Try Stripe Connect transfer if onboarded
+      let transferResult = null;
+      if (node?.stripe_account_id) {
+        try {
+          const status = await connect.checkAccountStatus(node.stripe_account_id);
+          if (status.payouts_enabled) {
+            transferResult = await connect.transferToNode(node.stripe_account_id, requestedInts, nodeId);
+            console.log(`◉ STRIPE TRANSFER: ${nodeId.slice(0,8)} → ${requestedInts} ints ($${amountUsd}) → ${transferResult.transfer_id}`);
+          }
+        } catch (e) {
+          console.log(`⚠ Stripe transfer failed: ${e.message}`);
+          // Fall through to manual cashout
+        }
+      }
 
-      // Mark ints as cashed out
+      // Record the cashout
+      const payoutMethod = transferResult ? 'stripe_connect' : 'pending';
+      const cashoutStatus = transferResult ? 'completed' : 'pending';
+      db.prepare(`INSERT INTO cashouts (nodeId, amount_ints, amount_usd, payout_email, payout_method, status) VALUES (?, ?, ?, ?, ?, ?)`).run(
+        nodeId, requestedInts, amountUsd, payout_email || node?.payout_email || '', payoutMethod, cashoutStatus
+      );
       db.prepare(`UPDATE payouts SET cashed_out_ints = COALESCE(cashed_out_ints, 0) + ? WHERE nodeId = ?`).run(requestedInts, nodeId);
 
-      console.log(`◉ CASHOUT REQUEST: ${nodeId.slice(0,8)} → ${requestedInts} ints ($${amountUsd.toFixed(2)}) to ${payout_email}`);
+      console.log(`◉ CASHOUT: ${nodeId.slice(0,8)} → ${requestedInts} ints ($${amountUsd}) [${payoutMethod}]`);
 
       return json(res, {
         ok: true,
         cashout: {
           amount_ints: requestedInts,
           amount_usd: amountUsd.toFixed(2),
-          payout_email,
-          status: 'pending',
-          message: 'Cashout request submitted. Payment will be processed within 48 hours.'
+          payout_method: payoutMethod,
+          transfer_id: transferResult?.transfer_id || null,
+          status: cashoutStatus,
+          message: transferResult 
+            ? 'Payment transferred via Stripe. Funds will arrive in your bank within 2 business days.'
+            : 'Cashout request submitted. Complete Stripe onboarding for instant payouts, or payment will be processed manually within 48 hours.'
         },
         remaining_ints: available - requestedInts
       });
@@ -673,7 +741,6 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname.match(/^\/cashouts\/\d+\/process$/)) {
       const cashoutId = pathname.split('/')[2];
       const data = await parseBody(req);
-      // Simple admin auth via header
       if (req.headers['x-admin-key'] !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
         return json(res, { error: 'Unauthorized' }, 401);
       }

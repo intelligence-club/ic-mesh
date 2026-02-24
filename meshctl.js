@@ -259,6 +259,50 @@ function requestCashout(email) {
     .catch(e => console.log('  Error connecting to server:', e.message));
 }
 
+function onboardNode(email) {
+  const config = loadConfig();
+  const state = loadState();
+  if (!state.nodeId || !config?.server?.url) {
+    console.log('Node not registered. Run the client first.');
+    return;
+  }
+  if (!email) {
+    console.log('Usage: node meshctl.js onboard <email>');
+    console.log('  Sets up Stripe Connect for automatic payouts.');
+    console.log('  You\'ll get a link to complete identity verification and add bank details.');
+    return;
+  }
+
+  console.log(`\n  Setting up payouts for node ${state.nodeId.slice(0,8)}...`);
+  console.log(`  Email: ${email}\n`);
+
+  fetch(`${config.server.url}/nodes/onboard`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodeId: state.nodeId, email })
+  })
+    .then(r => r.json())
+    .then(result => {
+      if (result.error) {
+        console.log('  Error:', result.error);
+        return;
+      }
+      if (result.status === 'already_onboarded') {
+        console.log('  ✓ Already onboarded! Payouts are enabled.');
+        console.log(`  Email: ${result.email}\n`);
+        return;
+      }
+      if (result.onboarding_url) {
+        console.log('  ✓ Stripe Connect account created!');
+        console.log('  Complete onboarding at:\n');
+        console.log(`  ${result.onboarding_url}\n`);
+        console.log('  This link expires — complete it now.');
+        console.log('  After onboarding, cashouts will be instant via Stripe.\n');
+      }
+    })
+    .catch(e => console.log('  Error:', e.message));
+}
+
 function showConfig() {
   const config = loadConfig();
   if (!config) { console.log('No config. Run: node meshctl.js init'); return; }
@@ -278,6 +322,7 @@ switch(cmd) {
   case 'resume': setPaused(false); break;
   case 'earnings': showEarnings(); break;
   case 'cashout': requestCashout(args[0]); break;
+  case 'onboard': onboardNode(args[0]); break;
   case 'config': showConfig(); break;
   case 'init': initConfig(); break;
   case 'schedule':
@@ -289,5 +334,5 @@ switch(cmd) {
     break;
   default:
     console.log('Unknown command:', cmd);
-    console.log('Commands: status, enable, disable, limit, pause, resume, schedule, earnings, cashout, config, init');
+    console.log('Commands: status, enable, disable, limit, pause, resume, schedule, earnings, cashout, onboard, config, init');
 }
