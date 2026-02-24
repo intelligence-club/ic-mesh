@@ -197,17 +197,66 @@ function showEarnings() {
   console.log(`  Jobs completed: ${state.jobsCompleted || 0}`);
   
   if (state.nodeId && config?.server?.url) {
-    // Try to fetch from server
-    fetch(`${config.server.url}/ledger/${state.nodeId}`)
+    // Fetch ints balance from server
+    fetch(`${config.server.url}/payouts/${state.nodeId}`)
       .then(r => r.json())
       .then(d => {
-        console.log(`  Server balance: ${d.balance?.toFixed(4) || 0} credits`);
-        console.log(`  Total earned: ${d.earned?.toFixed(4) || 0}`);
-        console.log(`  Total spent: ${d.spent?.toFixed(4) || 0}`);
+        console.log(`  Earned: ${d.earned_ints || 0} ints ($${d.earned_usd || '0.00'})`);
+        console.log(`  Cashed out: ${d.cashed_out_ints || 0} ints`);
+        console.log(`  Available: ${d.available_ints || 0} ints ($${d.available_usd || '0.00'})`);
+        console.log(`  Jobs paid: ${d.jobs_paid || 0}`);
       })
       .catch(() => console.log('  (Could not reach server for balance)'));
   }
   console.log('');
+}
+
+function requestCashout(email) {
+  const config = loadConfig();
+  const state = loadState();
+  if (!state.nodeId || !config?.server?.url) {
+    console.log('Node not registered. Run the client first.');
+    return;
+  }
+  if (!email) {
+    console.log('Usage: node meshctl.js cashout <email>');
+    console.log('  Email is where you want to receive payment (PayPal/Stripe).');
+    return;
+  }
+  
+  // First check available balance
+  fetch(`${config.server.url}/payouts/${state.nodeId}`)
+    .then(r => r.json())
+    .then(d => {
+      const available = d.available_ints || 0;
+      if (available < 1000) {
+        console.log(`\n  Available: ${available} ints`);
+        console.log(`  Minimum cashout: 1,000 ints ($0.80)`);
+        console.log('  Keep computing! You\'ll get there.\n');
+        return;
+      }
+      console.log(`\n  Available: ${available} ints ($${d.available_usd})`);
+      console.log(`  Cashing out ${available} ints → $${d.available_usd} to ${email}`);
+      console.log('  Submitting request...\n');
+      
+      return fetch(`${config.server.url}/cashout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: state.nodeId, payout_email: email })
+      }).then(r => r.json()).then(result => {
+        if (result.ok) {
+          console.log('  ✓ Cashout request submitted!');
+          console.log(`  Amount: ${result.cashout.amount_ints} ints ($${result.cashout.amount_usd})`);
+          console.log(`  To: ${result.cashout.payout_email}`);
+          console.log(`  Status: ${result.cashout.status}`);
+          console.log(`  Remaining: ${result.remaining_ints} ints`);
+          console.log(`\n  ${result.cashout.message}\n`);
+        } else {
+          console.log('  Error:', result.error);
+        }
+      });
+    })
+    .catch(e => console.log('  Error connecting to server:', e.message));
 }
 
 function showConfig() {
@@ -228,6 +277,7 @@ switch(cmd) {
   case 'pause': setPaused(true); break;
   case 'resume': setPaused(false); break;
   case 'earnings': showEarnings(); break;
+  case 'cashout': requestCashout(args[0]); break;
   case 'config': showConfig(); break;
   case 'init': initConfig(); break;
   case 'schedule':
@@ -239,5 +289,5 @@ switch(cmd) {
     break;
   default:
     console.log('Unknown command:', cmd);
-    console.log('Commands: status, enable, disable, limit, pause, resume, schedule, earnings, config, init');
+    console.log('Commands: status, enable, disable, limit, pause, resume, schedule, earnings, cashout, config, init');
 }

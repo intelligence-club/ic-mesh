@@ -93,7 +93,20 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS payouts (
     nodeId TEXT PRIMARY KEY,
     earned_ints INTEGER DEFAULT 0,
+    cashed_out_ints INTEGER DEFAULT 0,
     jobs_paid INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS cashouts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nodeId TEXT NOT NULL,
+    amount_ints INTEGER NOT NULL,
+    amount_usd REAL NOT NULL,
+    payout_email TEXT,
+    payout_method TEXT DEFAULT 'pending',
+    status TEXT DEFAULT 'pending',
+    created TEXT DEFAULT (datetime('now')),
+    processed TEXT
   );
 `);
 
@@ -588,8 +601,87 @@ const server = http.createServer(async (req, res) => {
     }
     if (method === 'GET' && pathname.match(/^\/payouts\/.+$/)) {
       const nodeId = pathname.split('/')[2];
-      const entry = stmts.getPayout.get(nodeId) || { earned_ints: 0, jobs_paid: 0 };
-      return json(res, { nodeId, earned_ints: entry.earned_ints, earned_usd: (entry.earned_ints * 0.001).toFixed(2), jobs_paid: entry.jobs_paid });
+      const entry = stmts.getPayout.get(nodeId) || { earned_ints: 0, cashed_out_ints: 0, jobs_paid: 0 };
+      const available = entry.earned_ints - (entry.cashed_out_ints || 0);
+      return json(res, {
+        nodeId,
+        earned_ints: entry.earned_ints,
+        cashed_out_ints: entry.cashed_out_ints || 0,
+        available_ints: available,
+        available_usd: (available * 0.0008).toFixed(2),
+        earned_usd: (entry.earned_ints * 0.0008).toFixed(2),
+        jobs_paid: entry.jobs_paid
+      });
+    }
+
+    // ---- Cashout request ----
+    if (method === 'POST' && pathname === '/cashout') {
+      const data = await parseBody(req);
+      const { nodeId, amount_ints, payout_email } = data;
+      const MIN_CASHOUT = 1000; // 1000 ints = $0.80
+      const SELL_RATE = 0.0008; // $/int
+
+      if (!nodeId || !payout_email) {
+        return json(res, { error: 'nodeId and payout_email required' }, 400);
+      }
+
+      const entry = stmts.getPayout.get(nodeId);
+      if (!entry) return json(res, { error: 'No earnings found for this node' }, 404);
+
+      const available = entry.earned_ints - (entry.cashed_out_ints || 0);
+      const requestedInts = amount_ints ? Math.min(parseInt(amount_ints), available) : available;
+
+      if (requestedInts < MIN_CASHOUT) {
+        return json(res, {
+          error: `Minimum cashout is ${MIN_CASHOUT} ints ($${(MIN_CASHOUT * SELL_RATE).toFixed(2)})`,
+          available_ints: available,
+          minimum_ints: MIN_CASHOUT
+        }, 400);
+      }
+
+      const amountUsd = requestedInts * SELL_RATE;
+
+      // Record the cashout request
+      db.prepare(`INSERT INTO cashouts (nodeId, amount_ints, amount_usd, payout_email) VALUES (?, ?, ?, ?)`).run(nodeId, requestedInts, amountUsd, payout_email);
+
+      // Mark ints as cashed out
+      db.prepare(`UPDATE payouts SET cashed_out_ints = COALESCE(cashed_out_ints, 0) + ? WHERE nodeId = ?`).run(requestedInts, nodeId);
+
+      console.log(`◉ CASHOUT REQUEST: ${nodeId.slice(0,8)} → ${requestedInts} ints ($${amountUsd.toFixed(2)}) to ${payout_email}`);
+
+      return json(res, {
+        ok: true,
+        cashout: {
+          amount_ints: requestedInts,
+          amount_usd: amountUsd.toFixed(2),
+          payout_email,
+          status: 'pending',
+          message: 'Cashout request submitted. Payment will be processed within 48 hours.'
+        },
+        remaining_ints: available - requestedInts
+      });
+    }
+
+    // ---- Cashout history ----
+    if (method === 'GET' && pathname.match(/^\/cashouts\/.+$/)) {
+      const nodeId = pathname.split('/')[2];
+      const cashouts = db.prepare('SELECT * FROM cashouts WHERE nodeId = ? ORDER BY created DESC LIMIT 50').all(nodeId);
+      return json(res, { nodeId, cashouts });
+    }
+
+    // ---- Admin: process cashout ----
+    if (method === 'POST' && pathname.match(/^\/cashouts\/\d+\/process$/)) {
+      const cashoutId = pathname.split('/')[2];
+      const data = await parseBody(req);
+      // Simple admin auth via header
+      if (req.headers['x-admin-key'] !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
+        return json(res, { error: 'Unauthorized' }, 401);
+      }
+      db.prepare(`UPDATE cashouts SET status = ?, processed = datetime('now'), payout_method = ? WHERE id = ?`).run(
+        data.status || 'completed', data.method || 'manual', cashoutId
+      );
+      console.log(`◉ CASHOUT PROCESSED: #${cashoutId} → ${data.status || 'completed'}`);
+      return json(res, { ok: true, cashout_id: cashoutId, status: data.status || 'completed' });
     }
     
     // ---- Handler Registry ----
