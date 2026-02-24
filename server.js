@@ -29,6 +29,8 @@ const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { WebSocketServer, WebSocket } = require('ws');
 
+const storage = require('./lib/storage');
+
 const PORT = 8333;
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
@@ -417,28 +419,29 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname === '/upload') {
       const chunks = [];
       req.on('data', c => { chunks.push(c); if (Buffer.concat(chunks).length > 50 * 1024 * 1024) req.destroy(); });
-      req.on('end', () => {
-        const body = Buffer.concat(chunks);
-        const bodyStr = body.toString('latin1');
-        const filenameMatch = bodyStr.match(/filename="([^"]+)"/);
-        const ext = filenameMatch ? path.extname(filenameMatch[1]) : '.bin';
-        const id = crypto.randomBytes(8).toString('hex');
-        const filename = `upload-${id}${ext}`;
-        
-        const boundaryMatch = bodyStr.match(/^--(----[^\r\n]+)/);
-        if (boundaryMatch) {
-          const boundary = boundaryMatch[1];
-          const headerEnd = body.indexOf('\r\n\r\n') + 4;
-          const footerStart = body.lastIndexOf(Buffer.from(`\r\n--${boundary}`));
-          if (headerEnd > 4 && footerStart > headerEnd) {
-            const fileData = body.slice(headerEnd, footerStart);
-            fs.writeFileSync(path.join(UPLOAD_DIR, filename), fileData);
-            console.log(`  ↑ Upload: ${filename} (${(fileData.length / 1024 / 1024).toFixed(1)}MB)`);
-            const pubBase = process.env.IC_MESH_PUBLIC_URL || `http://localhost:${PORT}`;
-            return json(res, { ok: true, url: `${pubBase}/files/${filename}`, filename, size: fileData.length });
+      req.on('end', async () => {
+        try {
+          const body = Buffer.concat(chunks);
+          const bodyStr = body.toString('latin1');
+          const filenameMatch = bodyStr.match(/filename="([^"]+)"/);
+          const origFilename = filenameMatch ? filenameMatch[1] : 'upload.bin';
+          
+          const boundaryMatch = bodyStr.match(/^--(----[^\r\n]+)/);
+          if (boundaryMatch) {
+            const boundary = boundaryMatch[1];
+            const headerEnd = body.indexOf('\r\n\r\n') + 4;
+            const footerStart = body.lastIndexOf(Buffer.from(`\r\n--${boundary}`));
+            if (headerEnd > 4 && footerStart > headerEnd) {
+              const fileData = body.slice(headerEnd, footerStart);
+              const result = await storage.uploadFile(fileData, origFilename);
+              console.log(`  ↑ Upload: ${result.filename} (${(result.size / 1024 / 1024).toFixed(1)}MB) [${result.storage}]`);
+              return json(res, { ok: true, url: result.url, filename: result.filename, size: result.size, storage: result.storage });
+            }
           }
+          json(res, { error: 'Could not parse upload' }, 400);
+        } catch(e) {
+          json(res, { error: e.message }, 500);
         }
-        json(res, { error: 'Could not parse upload' }, 400);
       });
       return;
     }
@@ -650,6 +653,19 @@ try {
 
 // ===== START =====
 setupWebSocket(server);
+
+// Init Spaces storage (falls back to local if not configured)
+storage.initSpaces().then(ok => {
+  if (!ok) console.log('  📁 Storage: local disk (set DO_SPACES_KEY/SECRET for Spaces)');
+});
+
+// Cleanup expired uploads every hour
+setInterval(async () => {
+  try {
+    const deleted = await storage.cleanupExpired();
+    if (deleted > 0) console.log(`  🧹 Cleaned up ${deleted} expired uploads`);
+  } catch(e) {}
+}, 3600000);
 
 server.listen(PORT, '0.0.0.0', () => {
   const nodeCount = stmts.getAllNodes.all().length;
