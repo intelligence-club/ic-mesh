@@ -1,234 +1,390 @@
 #!/usr/bin/env node
 /**
- * IC Mesh — Coordination Server
+ * IC Mesh — Coordination Server v0.3
  * 
- * The central hub that coordinates the Intelligence Club compute mesh.
- * Runs on our server (157.245.189.193). Nodes check in here.
+ * SQLite for persistence, WebSocket for real-time, HTTP for compatibility.
  * 
- * Components:
- * 1. Node Registry — who's online, what can they do
- * 2. Job Queue — tasks waiting to be claimed
- * 3. Compute Broker — routes jobs to best available node  
- * 4. Ledger — tracks compute credits/debits
- * 
- * API:
+ * API (HTTP — unchanged):
  *   POST /nodes/register    — node checks in
  *   GET  /nodes             — list active nodes
  *   POST /jobs              — submit a job
+ *   GET  /jobs/:id          — get job status/result
  *   GET  /jobs/available    — get claimable jobs (for nodes)
  *   POST /jobs/:id/claim    — node claims a job
  *   POST /jobs/:id/complete — node reports job done
  *   GET  /ledger/:nodeId    — get node's compute balance
  *   GET  /status            — network status
+ *   POST /upload            — upload file for job payload
+ *   GET  /files/:name       — download uploaded file
+ * 
+ * WebSocket (new):
+ *   ws://host:8333/ws?nodeId=<id>
+ *   Messages: job.dispatch, job.progress, node.heartbeat, mesh.stats
  */
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const Database = require('better-sqlite3');
+const { WebSocketServer, WebSocket } = require('ws');
 
-const PORT = 8333; // mesh port
+const PORT = 8333;
 const DATA_DIR = path.join(__dirname, 'data');
-const NODES_FILE = path.join(DATA_DIR, 'nodes.json');
-const JOBS_FILE = path.join(DATA_DIR, 'jobs.json');
-const LEDGER_FILE = path.join(DATA_DIR, 'ledger.json');
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+const DB_PATH = path.join(DATA_DIR, 'mesh.db');
 
-// Ensure data dir
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// ===== STATE =====
-let nodes = loadJSON(NODES_FILE, {});
-let jobs = loadJSON(JOBS_FILE, {});
-let ledger = loadJSON(LEDGER_FILE, {});
+// ===== DATABASE =====
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
 
-function loadJSON(file, fallback) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch { return fallback; }
+db.exec(`
+  CREATE TABLE IF NOT EXISTS nodes (
+    nodeId TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    ip TEXT,
+    capabilities TEXT DEFAULT '[]',
+    models TEXT DEFAULT '[]',
+    cpuCores INTEGER DEFAULT 0,
+    ramMB INTEGER DEFAULT 0,
+    ramFreeMB INTEGER DEFAULT 0,
+    cpuIdle INTEGER DEFAULT 0,
+    gpuVRAM INTEGER DEFAULT 0,
+    diskFreeGB INTEGER DEFAULT 0,
+    owner TEXT DEFAULT 'unknown',
+    region TEXT DEFAULT 'unknown',
+    lastSeen INTEGER NOT NULL,
+    registeredAt INTEGER NOT NULL,
+    jobsCompleted INTEGER DEFAULT 0,
+    computeMinutes REAL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS jobs (
+    jobId TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    payload TEXT DEFAULT '{}',
+    requester TEXT,
+    requirements TEXT DEFAULT '{}',
+    status TEXT DEFAULT 'pending',
+    claimedBy TEXT,
+    createdAt INTEGER NOT NULL,
+    claimedAt INTEGER,
+    completedAt INTEGER,
+    result TEXT,
+    computeMs INTEGER DEFAULT 0,
+    creditAmount REAL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+  CREATE INDEX IF NOT EXISTS idx_jobs_claimedBy ON jobs(claimedBy);
+
+  CREATE TABLE IF NOT EXISTS ledger (
+    nodeId TEXT PRIMARY KEY,
+    earned REAL DEFAULT 0,
+    spent REAL DEFAULT 0,
+    jobs INTEGER DEFAULT 0
+  );
+`);
+
+// ===== PREPARED STATEMENTS =====
+const stmts = {
+  upsertNode: db.prepare(`
+    INSERT INTO nodes (nodeId, name, ip, capabilities, models, cpuCores, ramMB, ramFreeMB, cpuIdle, gpuVRAM, diskFreeGB, owner, region, lastSeen, registeredAt)
+    VALUES (@nodeId, @name, @ip, @capabilities, @models, @cpuCores, @ramMB, @ramFreeMB, @cpuIdle, @gpuVRAM, @diskFreeGB, @owner, @region, @lastSeen, @registeredAt)
+    ON CONFLICT(nodeId) DO UPDATE SET
+      name=@name, ip=@ip, capabilities=@capabilities, models=@models,
+      cpuCores=@cpuCores, ramMB=@ramMB, ramFreeMB=@ramFreeMB, cpuIdle=@cpuIdle,
+      gpuVRAM=@gpuVRAM, diskFreeGB=@diskFreeGB, owner=@owner, region=@region, lastSeen=@lastSeen
+  `),
+  getNode: db.prepare('SELECT * FROM nodes WHERE nodeId = ?'),
+  getActiveNodes: db.prepare('SELECT * FROM nodes WHERE lastSeen > ?'),
+  getAllNodes: db.prepare('SELECT * FROM nodes'),
+  
+  insertJob: db.prepare(`
+    INSERT INTO jobs (jobId, type, payload, requester, requirements, status, createdAt)
+    VALUES (@jobId, @type, @payload, @requester, @requirements, 'pending', @createdAt)
+  `),
+  getJob: db.prepare('SELECT * FROM jobs WHERE jobId = ?'),
+  getPendingJobs: db.prepare("SELECT * FROM jobs WHERE status = 'pending' ORDER BY createdAt ASC"),
+  claimJob: db.prepare("UPDATE jobs SET status = 'claimed', claimedBy = ?, claimedAt = ? WHERE jobId = ? AND status = 'pending'"),
+  completeJob: db.prepare("UPDATE jobs SET status = 'completed', completedAt = ?, result = ?, computeMs = ?, creditAmount = ? WHERE jobId = ? AND claimedBy = ?"),
+  failJob: db.prepare("UPDATE jobs SET status = 'failed', result = ? WHERE jobId = ?"),
+  countJobs: db.prepare("SELECT status, COUNT(*) as count FROM jobs GROUP BY status"),
+  
+  upsertLedger: db.prepare(`
+    INSERT INTO ledger (nodeId, earned, spent, jobs) VALUES (?, ?, ?, ?)
+    ON CONFLICT(nodeId) DO UPDATE SET earned = earned + ?, spent = spent + ?, jobs = jobs + ?
+  `),
+  getLedger: db.prepare('SELECT * FROM ledger WHERE nodeId = ?'),
+  
+  updateNodeStats: db.prepare('UPDATE nodes SET jobsCompleted = jobsCompleted + 1, computeMinutes = computeMinutes + ? WHERE nodeId = ?'),
+};
+
+function migrateFromJSON() {
+  const count = db.prepare('SELECT COUNT(*) as c FROM nodes').get().c;
+  if (count > 0) return; // already has data
+  
+  try {
+    const nodesFile = path.join(DATA_DIR, 'nodes.json');
+    const jobsFile = path.join(DATA_DIR, 'jobs.json');
+    const ledgerFile = path.join(DATA_DIR, 'ledger.json');
+    
+    if (fs.existsSync(nodesFile)) {
+      const nodes = JSON.parse(fs.readFileSync(nodesFile, 'utf8'));
+      for (const n of Object.values(nodes)) {
+        stmts.upsertNode.run({
+          nodeId: n.nodeId, name: n.name || 'unknown', ip: n.ip || '',
+          capabilities: JSON.stringify(n.capabilities || []),
+          models: JSON.stringify(n.models || []),
+          cpuCores: n.resources?.cpuCores || 0, ramMB: n.resources?.ramMB || 0,
+          ramFreeMB: n.resources?.ramFreeMB || 0, cpuIdle: n.resources?.cpuIdle || 0,
+          gpuVRAM: n.resources?.gpuVRAM || 0, diskFreeGB: n.resources?.diskFreeGB || 0,
+          owner: n.owner || 'unknown', region: n.region || 'unknown',
+          lastSeen: n.lastSeen || Date.now(), registeredAt: n.registeredAt || Date.now()
+        });
+      }
+      console.log(`  Migrated ${Object.keys(nodes).length} nodes from JSON`);
+    }
+    
+    if (fs.existsSync(jobsFile)) {
+      const jobs = JSON.parse(fs.readFileSync(jobsFile, 'utf8'));
+      for (const j of Object.values(jobs)) {
+        try {
+          stmts.insertJob.run({
+            jobId: j.jobId, type: j.type,
+            payload: JSON.stringify(j.payload || {}),
+            requester: j.requester || '',
+            requirements: JSON.stringify(j.requirements || {}),
+            createdAt: j.createdAt || Date.now()
+          });
+          if (j.status === 'completed') {
+            stmts.completeJob.run(j.completedAt, JSON.stringify(j.result), j.computeMs || 0, j.creditAmount || 0, j.jobId, j.claimedBy);
+          } else if (j.status === 'claimed') {
+            stmts.claimJob.run(j.claimedBy, j.claimedAt, j.jobId);
+          }
+        } catch(e) {} // skip dupes
+      }
+      console.log(`  Migrated ${Object.keys(jobs).length} jobs from JSON`);
+    }
+    
+    if (fs.existsSync(ledgerFile)) {
+      const ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
+      for (const [id, l] of Object.entries(ledger)) {
+        stmts.upsertLedger.run(id, l.earned || 0, l.spent || 0, l.jobs || 0, 0, 0, 0);
+      }
+      console.log(`  Migrated ${Object.keys(ledger).length} ledger entries from JSON`);
+    }
+  } catch(e) {
+    console.log('  JSON migration skipped:', e.message);
+  }
 }
 
-function save(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+// Migrate existing JSON data if DB is fresh
+migrateFromJSON();
+
+// ===== HELPER FUNCTIONS =====
+function genId() { return crypto.randomBytes(8).toString('hex'); }
+
+function nodeToJSON(row) {
+  return {
+    nodeId: row.nodeId, name: row.name, ip: row.ip,
+    capabilities: JSON.parse(row.capabilities || '[]'),
+    models: JSON.parse(row.models || '[]'),
+    resources: {
+      cpuCores: row.cpuCores, ramMB: row.ramMB, ramFreeMB: row.ramFreeMB,
+      cpuIdle: row.cpuIdle, gpuVRAM: row.gpuVRAM, diskFreeGB: row.diskFreeGB
+    },
+    owner: row.owner, region: row.region,
+    lastSeen: row.lastSeen, registeredAt: row.registeredAt,
+    status: row.lastSeen > Date.now() - 120000 ? 'online' : 'offline',
+    jobsCompleted: row.jobsCompleted, computeMinutes: row.computeMinutes
+  };
 }
 
-function genId() {
-  return crypto.randomBytes(8).toString('hex');
+function jobToJSON(row) {
+  return {
+    jobId: row.jobId, type: row.type,
+    payload: JSON.parse(row.payload || '{}'),
+    requester: row.requester,
+    requirements: JSON.parse(row.requirements || '{}'),
+    status: row.status, claimedBy: row.claimedBy,
+    createdAt: row.createdAt, claimedAt: row.claimedAt,
+    completedAt: row.completedAt,
+    result: row.result ? JSON.parse(row.result) : null,
+    computeMs: row.computeMs, creditAmount: row.creditAmount
+  };
 }
-
-// ===== NODE REGISTRY =====
 
 function registerNode(data) {
   const id = data.nodeId || genId();
   const now = Date.now();
-  
-  nodes[id] = {
-    nodeId: id,
-    name: data.name || 'unnamed',
-    ip: data.ip || 'unknown',
-    capabilities: data.capabilities || [],  // ['ollama', 'whisper', 'gpu', 'ffmpeg']
-    models: data.models || [],              // ['llama3.1:8b', 'mistral:7b']
-    resources: {
-      cpuCores: data.cpuCores || 0,
-      ramMB: data.ramMB || 0,
-      ramFreeMB: data.ramFreeMB || 0,
-      cpuIdle: data.cpuIdle || 0,           // percentage
-      gpuVRAM: data.gpuVRAM || 0,
-      diskFreeGB: data.diskFreeGB || 0
-    },
-    owner: data.owner || 'unknown',
-    region: data.region || 'unknown',
-    lastSeen: now,
-    registeredAt: nodes[id]?.registeredAt || now,
-    status: 'online',
-    jobsCompleted: nodes[id]?.jobsCompleted || 0,
-    computeMinutes: nodes[id]?.computeMinutes || 0
-  };
-  
-  save(NODES_FILE, nodes);
-  return nodes[id];
+  stmts.upsertNode.run({
+    nodeId: id, name: data.name || 'unnamed', ip: data.ip || 'unknown',
+    capabilities: JSON.stringify(data.capabilities || []),
+    models: JSON.stringify(data.models || []),
+    cpuCores: data.cpuCores || 0, ramMB: data.ramMB || 0,
+    ramFreeMB: data.ramFreeMB || 0, cpuIdle: data.cpuIdle || 0,
+    gpuVRAM: data.gpuVRAM || 0, diskFreeGB: data.diskFreeGB || 0,
+    owner: data.owner || 'unknown', region: data.region || 'unknown',
+    lastSeen: now, registeredAt: now
+  });
+  return nodeToJSON(stmts.getNode.get(id));
 }
 
 function getActiveNodes() {
-  const cutoff = Date.now() - 120000; // 2 min timeout
-  const active = {};
-  for (const [id, node] of Object.entries(nodes)) {
-    if (node.lastSeen > cutoff) {
-      active[id] = { ...node, status: 'online' };
-    } else {
-      node.status = 'offline';
-    }
-  }
-  return active;
+  const cutoff = Date.now() - 120000;
+  const rows = stmts.getActiveNodes.all(cutoff);
+  const result = {};
+  for (const r of rows) result[r.nodeId] = nodeToJSON(r);
+  return result;
 }
-
-// ===== JOB QUEUE =====
 
 function submitJob(data) {
   const id = genId();
-  const now = Date.now();
+  stmts.insertJob.run({
+    jobId: id, type: data.type,
+    payload: JSON.stringify(data.payload || {}),
+    requester: data.requester || '',
+    requirements: JSON.stringify(data.requirements || {}),
+    createdAt: Date.now()
+  });
   
-  jobs[id] = {
-    jobId: id,
-    type: data.type,                        // 'inference', 'transcribe', 'generate', 'custom'
-    payload: data.payload || {},             // job-specific data
-    requester: data.requester,              // nodeId of requesting node
-    requirements: data.requirements || {},   // { capability: 'ollama', model: 'llama3.1:8b', minRAM: 8000 }
-    status: 'pending',                      // pending, claimed, running, completed, failed
-    claimedBy: null,
-    createdAt: now,
-    claimedAt: null,
-    completedAt: null,
-    result: null,
-    computeMs: 0,                           // how long it took
-    creditAmount: 0                         // how much to credit the worker
-  };
+  // Push to connected WebSocket nodes
+  broadcastToEligibleNodes(jobToJSON(stmts.getJob.get(id)));
   
-  save(JOBS_FILE, jobs);
-  return jobs[id];
+  return jobToJSON(stmts.getJob.get(id));
 }
 
 function getAvailableJobs(nodeId) {
-  const available = [];
-  const node = nodes[nodeId];
+  const pending = stmts.getPendingJobs.all();
+  const node = stmts.getNode.get(nodeId);
+  const nodeCaps = node ? JSON.parse(node.capabilities || '[]') : [];
+  const nodeModels = node ? JSON.parse(node.models || '[]') : [];
   
-  for (const [id, job] of Object.entries(jobs)) {
-    if (job.status !== 'pending') continue;
-    
-    // Check if node meets requirements
-    const req = job.requirements;
-    if (req.capability && node && !node.capabilities.includes(req.capability)) continue;
-    if (req.model && node && !node.models.includes(req.model)) continue;
-    if (req.minRAM && node && node.resources.ramFreeMB < req.minRAM) continue;
-    
-    available.push(job);
-  }
-  
-  return available;
+  return pending.filter(row => {
+    const req = JSON.parse(row.requirements || '{}');
+    if (req.capability && !nodeCaps.includes(req.capability)) return false;
+    if (req.model && !nodeModels.includes(req.model)) return false;
+    if (req.minRAM && node && node.ramFreeMB < req.minRAM) return false;
+    return true;
+  }).map(jobToJSON);
 }
 
 function claimJob(jobId, nodeId) {
-  const job = jobs[jobId];
-  if (!job || job.status !== 'pending') return null;
-  
-  job.status = 'claimed';
-  job.claimedBy = nodeId;
-  job.claimedAt = Date.now();
-  
-  save(JOBS_FILE, jobs);
-  return job;
+  const info = stmts.claimJob.run(nodeId, Date.now(), jobId);
+  if (info.changes === 0) return null;
+  return jobToJSON(stmts.getJob.get(jobId));
 }
 
 function completeJob(jobId, nodeId, result) {
-  const job = jobs[jobId];
+  const job = stmts.getJob.get(jobId);
   if (!job || job.claimedBy !== nodeId) return null;
   
   const now = Date.now();
-  job.status = 'completed';
-  job.completedAt = now;
-  job.result = result.data || null;
-  job.computeMs = now - job.claimedAt;
-  
-  // Calculate credits (1 credit = 1 minute of compute)
-  const computeMinutes = job.computeMs / 60000;
-  job.creditAmount = computeMinutes;
-  
-  // Update ledger
-  if (!ledger[nodeId]) ledger[nodeId] = { earned: 0, spent: 0, jobs: 0 };
-  if (!ledger[job.requester]) ledger[job.requester] = { earned: 0, spent: 0, jobs: 0 };
-  
-  const networkCut = computeMinutes * 0.20; // 20% to IC
+  const computeMs = now - job.claimedAt;
+  const computeMinutes = computeMs / 60000;
+  const networkCut = computeMinutes * 0.20;
   const workerPay = computeMinutes - networkCut;
   
-  ledger[nodeId].earned += workerPay;
-  ledger[nodeId].jobs += 1;
-  ledger[job.requester].spent += computeMinutes;
+  stmts.completeJob.run(now, JSON.stringify(result.data || null), computeMs, computeMinutes, jobId, nodeId);
+  stmts.updateNodeStats.run(computeMinutes, nodeId);
   
-  if (!ledger['ic-treasury']) ledger['ic-treasury'] = { earned: 0, spent: 0, jobs: 0 };
-  ledger['ic-treasury'].earned += networkCut;
+  // Update ledger
+  stmts.upsertLedger.run(nodeId, 0, 0, 0, workerPay, 0, 1);
+  if (job.requester) stmts.upsertLedger.run(job.requester, 0, 0, 0, 0, computeMinutes, 0);
+  stmts.upsertLedger.run('ic-treasury', 0, 0, 0, networkCut, 0, 0);
   
-  // Update node stats
-  if (nodes[nodeId]) {
-    nodes[nodeId].jobsCompleted = (nodes[nodeId].jobsCompleted || 0) + 1;
-    nodes[nodeId].computeMinutes = (nodes[nodeId].computeMinutes || 0) + computeMinutes;
-  }
+  const completed = jobToJSON(stmts.getJob.get(jobId));
   
-  save(JOBS_FILE, jobs);
-  save(LEDGER_FILE, ledger);
-  save(NODES_FILE, nodes);
+  // Notify via WebSocket
+  broadcastEvent('job.completed', { jobId, type: completed.type, computeMs, nodeId });
   
-  return job;
+  return completed;
 }
 
-// ===== COMPUTE BROKER =====
+// ===== WEBSOCKET =====
+const wsClients = new Map(); // nodeId -> WebSocket
 
-function findBestNode(requirements) {
-  const active = getActiveNodes();
-  let bestNode = null;
-  let bestScore = -1;
+function setupWebSocket(server) {
+  const wss = new WebSocketServer({ server, path: '/ws' });
   
-  for (const [id, node] of Object.entries(active)) {
-    // Check hard requirements
-    if (requirements.capability && !node.capabilities.includes(requirements.capability)) continue;
-    if (requirements.model && !node.models.includes(requirements.model)) continue;
-    if (requirements.minRAM && node.resources.ramFreeMB < requirements.minRAM) continue;
+  wss.on('connection', (ws, req) => {
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    const nodeId = url.searchParams.get('nodeId') || 'unknown';
     
-    // Score by: idle CPU (40%), free RAM (30%), jobs completed reliability (30%)
-    const cpuScore = (node.resources.cpuIdle || 0) / 100;
-    const ramScore = Math.min((node.resources.ramFreeMB || 0) / 16000, 1);
-    const reliabilityScore = Math.min((node.jobsCompleted || 0) / 100, 1);
+    wsClients.set(nodeId, ws);
+    console.log(`  ⚡ WS connected: ${nodeId} (${wsClients.size} total)`);
     
-    const score = cpuScore * 0.4 + ramScore * 0.3 + reliabilityScore * 0.3;
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data);
+        handleWsMessage(nodeId, msg, ws);
+      } catch(e) {}
+    });
     
-    if (score > bestScore) {
-      bestScore = score;
-      bestNode = node;
+    ws.on('close', () => {
+      wsClients.delete(nodeId);
+      console.log(`  ⚡ WS disconnected: ${nodeId} (${wsClients.size} total)`);
+    });
+    
+    ws.on('error', () => wsClients.delete(nodeId));
+    
+    // Send pending jobs immediately
+    const available = getAvailableJobs(nodeId);
+    if (available.length > 0) {
+      ws.send(JSON.stringify({ type: 'jobs.available', jobs: available }));
     }
-  }
+  });
   
-  return bestNode;
+  return wss;
+}
+
+function handleWsMessage(nodeId, msg, ws) {
+  switch(msg.type) {
+    case 'node.heartbeat':
+      // Update node resources
+      if (msg.payload) {
+        const data = { ...msg.payload, nodeId, ip: '' };
+        registerNode(data);
+      }
+      break;
+    case 'job.claim':
+      const claimed = claimJob(msg.jobId, nodeId);
+      ws.send(JSON.stringify({ type: 'job.claim.result', jobId: msg.jobId, ok: !!claimed }));
+      break;
+    case 'job.result':
+      const completed = completeJob(msg.jobId, nodeId, { data: msg.result });
+      ws.send(JSON.stringify({ type: 'job.complete.result', jobId: msg.jobId, ok: !!completed }));
+      break;
+    case 'job.progress':
+      broadcastEvent('job.progress', { jobId: msg.jobId, progress: msg.progress, nodeId });
+      break;
+  }
+}
+
+function broadcastToEligibleNodes(job) {
+  const req = job.requirements || {};
+  for (const [nodeId, ws] of wsClients) {
+    if (ws.readyState !== WebSocket.OPEN) continue;
+    const node = stmts.getNode.get(nodeId);
+    if (!node) continue;
+    const caps = JSON.parse(node.capabilities || '[]');
+    if (req.capability && !caps.includes(req.capability)) continue;
+    ws.send(JSON.stringify({ type: 'job.dispatch', job }));
+  }
+}
+
+function broadcastEvent(type, data) {
+  const msg = JSON.stringify({ type, ...data, timestamp: Date.now() });
+  for (const [, ws] of wsClients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
 }
 
 // ===== HTTP SERVER =====
-
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -263,14 +419,12 @@ const server = http.createServer(async (req, res) => {
       req.on('data', c => { chunks.push(c); if (Buffer.concat(chunks).length > 50 * 1024 * 1024) req.destroy(); });
       req.on('end', () => {
         const body = Buffer.concat(chunks);
-        // Extract filename from multipart or generate one
         const bodyStr = body.toString('latin1');
         const filenameMatch = bodyStr.match(/filename="([^"]+)"/);
         const ext = filenameMatch ? path.extname(filenameMatch[1]) : '.bin';
         const id = crypto.randomBytes(8).toString('hex');
         const filename = `upload-${id}${ext}`;
         
-        // Find the file data between boundaries
         const boundaryMatch = bodyStr.match(/^--(----[^\r\n]+)/);
         if (boundaryMatch) {
           const boundary = boundaryMatch[1];
@@ -278,9 +432,7 @@ const server = http.createServer(async (req, res) => {
           const footerStart = body.lastIndexOf(Buffer.from(`\r\n--${boundary}`));
           if (headerEnd > 4 && footerStart > headerEnd) {
             const fileData = body.slice(headerEnd, footerStart);
-            const uploadDir = path.join(DATA_DIR, 'uploads');
-            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-            fs.writeFileSync(path.join(uploadDir, filename), fileData);
+            fs.writeFileSync(path.join(UPLOAD_DIR, filename), fileData);
             console.log(`  ↑ Upload: ${filename} (${(fileData.length / 1024 / 1024).toFixed(1)}MB)`);
             const pubBase = process.env.IC_MESH_PUBLIC_URL || `http://localhost:${PORT}`;
             return json(res, { ok: true, url: `${pubBase}/files/${filename}`, filename, size: fileData.length });
@@ -294,7 +446,7 @@ const server = http.createServer(async (req, res) => {
     // ---- File Serving ----
     if (method === 'GET' && pathname.startsWith('/files/')) {
       const filename = pathname.split('/').pop();
-      const filePath = path.join(DATA_DIR, 'uploads', filename);
+      const filePath = path.join(UPLOAD_DIR, filename);
       if (!fs.existsSync(filePath)) return json(res, { error: 'Not found' }, 404);
       const stat = fs.statSync(filePath);
       res.writeHead(200, {
@@ -315,34 +467,27 @@ const server = http.createServer(async (req, res) => {
     }
     
     if (method === 'GET' && pathname === '/nodes') {
-      return json(res, { nodes: getActiveNodes(), total: Object.keys(getActiveNodes()).length });
+      const active = getActiveNodes();
+      return json(res, { nodes: active, total: Object.keys(active).length });
     }
     
     // ---- Job Queue ----
     if (method === 'POST' && pathname === '/jobs') {
       const data = await parseBody(req);
-      
-      // Auto-route: find best node if not specified
-      if (!data.targetNode) {
-        const best = findBestNode(data.requirements || {});
-        if (best) data.suggestedNode = best.nodeId;
-      }
-      
       const job = submitJob(data);
       return json(res, { ok: true, job });
     }
     
     if (method === 'GET' && pathname.match(/^\/jobs\/[a-f0-9]+$/) && !pathname.includes('/available')) {
       const jobId = pathname.split('/')[2];
-      const job = jobs[jobId];
-      if (!job) return json(res, { error: 'Job not found' }, 404);
-      return json(res, { job });
+      const row = stmts.getJob.get(jobId);
+      if (!row) return json(res, { error: 'Job not found' }, 404);
+      return json(res, { job: jobToJSON(row) });
     }
-
+    
     if (method === 'GET' && pathname === '/jobs/available') {
       const nodeId = url.searchParams.get('nodeId') || req.headers['x-node-id'];
-      const available = getAvailableJobs(nodeId);
-      return json(res, { jobs: available, count: available.length });
+      return json(res, { jobs: getAvailableJobs(nodeId), count: 0 });
     }
     
     if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/claim$/)) {
@@ -364,7 +509,7 @@ const server = http.createServer(async (req, res) => {
     // ---- Ledger ----
     if (method === 'GET' && pathname.match(/^\/ledger\/.+$/)) {
       const nodeId = pathname.split('/')[2];
-      const entry = ledger[nodeId] || { earned: 0, spent: 0, jobs: 0 };
+      const entry = stmts.getLedger.get(nodeId) || { earned: 0, spent: 0, jobs: 0 };
       return json(res, { nodeId, ...entry, balance: entry.earned - entry.spent });
     }
     
@@ -372,17 +517,15 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname === '/status') {
       const active = getActiveNodes();
       const activeCount = Object.keys(active).length;
-      const totalJobs = Object.values(jobs).length;
-      const completedJobs = Object.values(jobs).filter(j => j.status === 'completed').length;
-      const totalComputeMin = Object.values(ledger).reduce((sum, l) => sum + (l.earned || 0), 0);
-      const treasury = ledger['ic-treasury'] || { earned: 0 };
+      const allNodes = stmts.getAllNodes.all();
+      const jobCounts = {};
+      for (const row of stmts.countJobs.all()) jobCounts[row.status] = row.count;
       
-      // Aggregate capabilities
+      const treasury = stmts.getLedger.get('ic-treasury') || { earned: 0 };
+      
       const allCaps = new Set();
       const allModels = new Set();
-      let totalRAM = 0;
-      let totalCores = 0;
-      
+      let totalRAM = 0, totalCores = 0;
       for (const node of Object.values(active)) {
         (node.capabilities || []).forEach(c => allCaps.add(c));
         (node.models || []).forEach(m => allModels.add(m));
@@ -392,27 +535,23 @@ const server = http.createServer(async (req, res) => {
       
       return json(res, {
         network: 'Intelligence Club Mesh',
-        version: '0.1.0',
+        version: '0.3.0',
         status: activeCount > 0 ? 'online' : 'no nodes',
-        nodes: {
-          active: activeCount,
-          total: Object.keys(nodes).length
-        },
+        nodes: { active: activeCount, total: allNodes.length },
         compute: {
-          totalCores,
-          totalRAM_GB: Math.round(totalRAM / 1024 * 10) / 10,
-          capabilities: [...allCaps],
-          models: [...allModels]
+          totalCores, totalRAM_GB: Math.round(totalRAM / 1024 * 10) / 10,
+          capabilities: [...allCaps], models: [...allModels]
         },
         jobs: {
-          total: totalJobs,
-          completed: completedJobs,
-          pending: Object.values(jobs).filter(j => j.status === 'pending').length
+          total: Object.values(jobCounts).reduce((a, b) => a + b, 0),
+          completed: jobCounts.completed || 0,
+          pending: jobCounts.pending || 0
         },
         economics: {
-          totalComputeMinutes: Math.round(totalComputeMin * 100) / 100,
+          totalComputeMinutes: Math.round((treasury.earned / 0.20) * 100) / 100,
           treasuryMinutes: Math.round(treasury.earned * 100) / 100
         },
+        websocket: { connected: wsClients.size },
         uptime: process.uptime()
       });
     }
@@ -431,10 +570,15 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// ===== DASHBOARD =====
 function getDashboardHTML() {
   const active = getActiveNodes();
   const activeCount = Object.keys(active).length;
-  
+  const allNodes = stmts.getAllNodes.all();
+  const jobCounts = {};
+  for (const row of stmts.countJobs.all()) jobCounts[row.status] = row.count;
+  const treasury = stmts.getLedger.get('ic-treasury') || { earned: 0 };
+
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8">
@@ -443,8 +587,9 @@ function getDashboardHTML() {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0a0e17; color: #c8d6e5; font-family: 'Courier New', monospace; padding: 2rem; }
-  h1 { color: #2d86ff; font-size: 1.2rem; letter-spacing: 0.2em; margin-bottom: 2rem; font-weight: 400; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  h1 { color: #2d86ff; font-size: 1.2rem; letter-spacing: 0.2em; margin-bottom: 0.5rem; font-weight: 400; }
+  .version { color: #6b7c93; font-size: 0.7rem; margin-bottom: 2rem; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
   .stat { border: 1px solid rgba(45,134,255,0.2); padding: 1.5rem; text-align: center; }
   .stat .num { font-size: 2rem; color: #22c55e; display: block; }
   .stat .label { font-size: 0.7rem; color: #6b7c93; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 0.5rem; }
@@ -453,36 +598,66 @@ function getDashboardHTML() {
   .node .info { color: #6b7c93; font-size: 0.8rem; margin-top: 0.5rem; }
   .online { color: #22c55e; }
   .offline { color: #ef4444; }
+  .ws { color: #a78bfa; }
   h2 { color: #2d86ff; font-size: 0.9rem; letter-spacing: 0.15em; margin: 2rem 0 1rem; font-weight: 400; }
   .refresh { color: #4a5568; font-size: 0.7rem; margin-top: 2rem; }
+  #events { max-height: 200px; overflow-y: auto; font-size: 0.75rem; color: #6b7c93; border: 1px solid rgba(45,134,255,0.1); padding: 0.5rem; }
 </style>
 </head><body>
 <h1>◉ IC MESH — NETWORK DASHBOARD</h1>
+<div class="version">v0.3.0 — SQLite + WebSocket | ${wsClients.size} WS connections</div>
 <div class="stats">
   <div class="stat"><span class="num">${activeCount}</span><span class="label">Active Nodes</span></div>
-  <div class="stat"><span class="num">${Object.keys(nodes).length}</span><span class="label">Total Registered</span></div>
-  <div class="stat"><span class="num">${Object.values(jobs).filter(j => j.status === 'completed').length}</span><span class="label">Jobs Completed</span></div>
-  <div class="stat"><span class="num">${Math.round((ledger['ic-treasury']?.earned || 0) * 100) / 100}</span><span class="label">Treasury (min)</span></div>
+  <div class="stat"><span class="num">${allNodes.length}</span><span class="label">Total Registered</span></div>
+  <div class="stat"><span class="num">${jobCounts.completed || 0}</span><span class="label">Jobs Completed</span></div>
+  <div class="stat"><span class="num">${jobCounts.pending || 0}</span><span class="label">Pending</span></div>
+  <div class="stat"><span class="num">${wsClients.size}</span><span class="label">WS Connected</span></div>
+  <div class="stat"><span class="num">${Math.round((treasury.earned || 0) * 100) / 100}</span><span class="label">Treasury (min)</span></div>
 </div>
 <h2>NODES</h2>
-${Object.values(nodes).map(n => `
-<div class="node">
+${allNodes.map(r => {
+  const n = nodeToJSON(r);
+  const isOnline = n.status === 'online';
+  const hasWs = wsClients.has(n.nodeId);
+  return `<div class="node">
   <span class="name">${n.name}</span>
-  <span class="${n.lastSeen > Date.now() - 120000 ? 'online' : 'offline'}"> ◉ ${n.lastSeen > Date.now() - 120000 ? 'ONLINE' : 'OFFLINE'}</span>
+  <span class="${isOnline ? 'online' : 'offline'}"> ◉ ${isOnline ? 'ONLINE' : 'OFFLINE'}</span>
+  ${hasWs ? '<span class="ws"> ⚡ WS</span>' : ''}
   <div class="info">
     ${n.capabilities.join(', ')} | ${n.resources.cpuCores} cores | ${Math.round(n.resources.ramMB/1024)}GB RAM | 
-    ${n.jobsCompleted} jobs | ${Math.round(n.computeMinutes*100)/100} compute min |
-    Last seen: ${new Date(n.lastSeen).toLocaleString()}
+    ${n.jobsCompleted} jobs | ${Math.round(n.computeMinutes*100)/100} compute min
   </div>
-</div>`).join('') || '<div class="node"><span class="info">No nodes registered yet. Start a client to join the mesh.</span></div>'}
-<p class="refresh">Auto-refreshes every 30s · <a href="/status" style="color:#2d86ff">API Status</a></p>
-<script>setTimeout(() => location.reload(), 30000);</script>
+</div>`;
+}).join('') || '<div class="node"><span class="info">No nodes registered yet.</span></div>'}
+<h2>LIVE EVENTS</h2>
+<div id="events"><em>Connect via WebSocket to see live events</em></div>
+<p class="refresh">Auto-refreshes every 15s · <a href="/status" style="color:#2d86ff">API</a> · <a href="/ws" style="color:#a78bfa">WebSocket</a></p>
+<script>
+setTimeout(() => location.reload(), 15000);
+try {
+  const ws = new WebSocket('ws://' + location.host + '/ws?nodeId=dashboard');
+  const el = document.getElementById('events');
+  ws.onmessage = (e) => {
+    const div = document.createElement('div');
+    div.textContent = new Date().toLocaleTimeString() + ' ' + e.data;
+    el.prepend(div);
+    while (el.children.length > 50) el.removeChild(el.lastChild);
+  };
+} catch(e) {}
+</script>
 </body></html>`;
 }
 
+// ===== START =====
+setupWebSocket(server);
+
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`◉ IC Mesh server live on port ${PORT}`);
+  const nodeCount = stmts.getAllNodes.all().length;
+  const jobCount = db.prepare('SELECT COUNT(*) as c FROM jobs').get().c;
+  console.log(`◉ IC Mesh server v0.3.0 live on port ${PORT}`);
+  console.log(`  Storage: SQLite (${DB_PATH})`);
+  console.log(`  Transport: HTTP + WebSocket`);
+  console.log(`  Nodes: ${nodeCount} registered`);
+  console.log(`  Jobs: ${jobCount} total`);
   console.log(`  Dashboard: http://localhost:${PORT}`);
-  console.log(`  Status:    http://localhost:${PORT}/status`);
-  console.log(`  Nodes:     ${Object.keys(nodes).length} registered`);
 });
