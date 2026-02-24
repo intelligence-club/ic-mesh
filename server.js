@@ -571,6 +571,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, { events: reputation.getHistory(nodeId, { limit }) });
     }
 
+    if (method === 'GET' && pathname.match(/^\/reputation\/[a-f0-9]+\/evidence$/)) {
+      const nodeId = pathname.split('/')[2];
+      return json(res, reputation.getEvidence(nodeId));
+    }
+
     if (method === 'GET' && pathname.match(/^\/reputation\/[a-f0-9]+$/)) {
       const nodeId = pathname.split('/')[2];
       return json(res, reputation.getScore(nodeId));
