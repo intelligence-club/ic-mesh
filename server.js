@@ -534,6 +534,19 @@ const server = http.createServer(async (req, res) => {
       return json(res, { nodeId, ...entry, balance: entry.earned - entry.spent });
     }
     
+    // ---- Handler Registry ----
+    if (method === 'GET' && pathname === '/handlers') {
+      const active = getActiveNodes();
+      const handlerMap = {};
+      for (const node of Object.values(active)) {
+        for (const cap of node.capabilities || []) {
+          if (!handlerMap[cap]) handlerMap[cap] = { nodes: 0, descriptions: [] };
+          handlerMap[cap].nodes++;
+        }
+      }
+      return json(res, { handlers: handlerMap, total: Object.keys(handlerMap).length });
+    }
+
     // ---- Network Status ----
     if (method === 'GET' && pathname === '/status') {
       const active = getActiveNodes();
