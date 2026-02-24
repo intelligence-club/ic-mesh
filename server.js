@@ -257,6 +257,54 @@ const server = http.createServer(async (req, res) => {
   if (method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   
   try {
+    // ---- File Upload ----
+    if (method === 'POST' && pathname === '/upload') {
+      const chunks = [];
+      req.on('data', c => { chunks.push(c); if (Buffer.concat(chunks).length > 50 * 1024 * 1024) req.destroy(); });
+      req.on('end', () => {
+        const body = Buffer.concat(chunks);
+        // Extract filename from multipart or generate one
+        const bodyStr = body.toString('latin1');
+        const filenameMatch = bodyStr.match(/filename="([^"]+)"/);
+        const ext = filenameMatch ? path.extname(filenameMatch[1]) : '.bin';
+        const id = crypto.randomBytes(8).toString('hex');
+        const filename = `upload-${id}${ext}`;
+        
+        // Find the file data between boundaries
+        const boundaryMatch = bodyStr.match(/^--(----[^\r\n]+)/);
+        if (boundaryMatch) {
+          const boundary = boundaryMatch[1];
+          const headerEnd = body.indexOf('\r\n\r\n') + 4;
+          const footerStart = body.lastIndexOf(Buffer.from(`\r\n--${boundary}`));
+          if (headerEnd > 4 && footerStart > headerEnd) {
+            const fileData = body.slice(headerEnd, footerStart);
+            const uploadDir = path.join(DATA_DIR, 'uploads');
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+            fs.writeFileSync(path.join(uploadDir, filename), fileData);
+            console.log(`  ↑ Upload: ${filename} (${(fileData.length / 1024 / 1024).toFixed(1)}MB)`);
+            return json(res, { ok: true, url: `http://${req.headers.host || 'localhost:' + PORT}/files/${filename}`, filename, size: fileData.length });
+          }
+        }
+        json(res, { error: 'Could not parse upload' }, 400);
+      });
+      return;
+    }
+
+    // ---- File Serving ----
+    if (method === 'GET' && pathname.startsWith('/files/')) {
+      const filename = pathname.split('/').pop();
+      const filePath = path.join(DATA_DIR, 'uploads', filename);
+      if (!fs.existsSync(filePath)) return json(res, { error: 'Not found' }, 404);
+      const stat = fs.statSync(filePath);
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': stat.size,
+        'Content-Disposition': `attachment; filename="${filename}"`
+      });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+
     // ---- Node Registry ----
     if (method === 'POST' && pathname === '/nodes/register') {
       const data = await parseBody(req);
