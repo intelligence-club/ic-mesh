@@ -1,0 +1,11 @@
+{
+  "name": "ic-mesh",
+  "version": "0.1.0",
+  "description": "Intelligence Club Mesh — distributed compute coordination layer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "client": "node client.js"
+  },
+  "dependencies": {}
+}
