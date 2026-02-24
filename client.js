@@ -206,8 +206,46 @@ async function runInference(payload) {
 }
 
 async function runTranscribe(payload) {
-  // TODO: implement whisper transcription
-  throw new Error('Transcription not yet implemented');
+  const { execSync } = require('child_process');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+
+  const url = payload.url;
+  if (!url) throw new Error('No audio URL provided');
+
+  // Download to temp file
+  const tmpDir = path.join(os.tmpdir(), 'ic-mesh-jobs');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const ext = path.extname(new URL(url).pathname) || '.wav';
+  const tmpFile = path.join(tmpDir, `transcribe-${Date.now()}${ext}`);
+
+  console.log(`  ↓ Downloading: ${url}`);
+  execSync(`curl -sL -o "${tmpFile}" "${url}"`, { timeout: 120000 });
+
+  // Run whisper
+  const model = payload.model || 'base';
+  const language = payload.language || 'en';
+  console.log(`  ◉ Transcribing with whisper (model: ${model})...`);
+
+  const outDir = path.join(tmpDir, `out-${Date.now()}`);
+  fs.mkdirSync(outDir, { recursive: true });
+
+  execSync(`whisper "${tmpFile}" --model ${model} --language ${language} --output_dir "${outDir}" --output_format txt`, {
+    timeout: 600000, // 10 min max
+    encoding: 'utf8'
+  });
+
+  // Read result
+  const txtFiles = fs.readdirSync(outDir).filter(f => f.endsWith('.txt'));
+  const transcript = txtFiles.length
+    ? fs.readFileSync(path.join(outDir, txtFiles[0]), 'utf8').trim()
+    : '(no output)';
+
+  // Cleanup
+  try { fs.unlinkSync(tmpFile); fs.rmSync(outDir, { recursive: true }); } catch {}
+
+  return { transcript, model, language, chars: transcript.length };
 }
 
 // ===== Main =====
