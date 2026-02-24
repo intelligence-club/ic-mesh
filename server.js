@@ -283,6 +283,13 @@ const server = http.createServer(async (req, res) => {
       return json(res, { ok: true, job });
     }
     
+    if (method === 'GET' && pathname.match(/^\/jobs\/[a-f0-9]+$/) && !pathname.includes('/available')) {
+      const jobId = pathname.split('/')[2];
+      const job = jobs[jobId];
+      if (!job) return json(res, { error: 'Job not found' }, 404);
+      return json(res, { job });
+    }
+
     if (method === 'GET' && pathname === '/jobs/available') {
       const nodeId = url.searchParams.get('nodeId') || req.headers['x-node-id'];
       const available = getAvailableJobs(nodeId);

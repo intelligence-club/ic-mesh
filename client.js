@@ -46,6 +46,10 @@ function getSystemInfo() {
 
 function getDiskFree() {
   try {
+    if (process.platform === 'darwin') {
+      const out = execSync("df -g / | tail -1 | awk '{print $4}'", { encoding: 'utf8' });
+      return parseInt(out) || 0;
+    }
     const out = execSync("df -BG / | tail -1 | awk '{print $4}'", { encoding: 'utf8' });
     return parseInt(out) || 0;
   } catch { return 0; }
@@ -163,12 +167,19 @@ async function pollJobs() {
     try {
       const result = await executeJob(job);
       
-      await meshFetch(`/jobs/${job.jobId}/complete`, {
-        method: 'POST',
-        body: JSON.stringify({ nodeId, data: result })
-      });
+      // Retry completion POST up to 3 times
+      let reported = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const resp = await meshFetch(`/jobs/${job.jobId}/complete`, {
+          method: 'POST',
+          body: JSON.stringify({ nodeId, data: result })
+        });
+        if (resp?.ok) { reported = true; break; }
+        console.log(`  ⟳ Completion report attempt ${attempt}/3 failed, retrying in ${attempt * 2}s...`);
+        await new Promise(r => setTimeout(r, attempt * 2000));
+      }
       
-      console.log(`  ✓ Completed: ${job.type}`);
+      console.log(`  ✓ Completed: ${job.type}${reported ? '' : ' (result not reported to server)'}`);
     } catch (e) {
       console.error(`  ✗ Job failed: ${e.message}`);
     }
