@@ -282,9 +282,8 @@ const server = http.createServer(async (req, res) => {
             if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
             fs.writeFileSync(path.join(uploadDir, filename), fileData);
             console.log(`  ↑ Upload: ${filename} (${(fileData.length / 1024 / 1024).toFixed(1)}MB)`);
-            const pubHost = process.env.IC_MESH_PUBLIC_HOST || req.headers.host || `localhost:${PORT}`;
-            const proto = pubHost.includes('localhost') ? 'http' : 'https';
-            return json(res, { ok: true, url: `${proto}://${pubHost}/files/${filename}`, filename, size: fileData.length });
+            const pubBase = process.env.IC_MESH_PUBLIC_URL || `http://localhost:${PORT}`;
+            return json(res, { ok: true, url: `${pubBase}/files/${filename}`, filename, size: fileData.length });
           }
         }
         json(res, { error: 'Could not parse upload' }, 400);
