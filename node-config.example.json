@@ -1,0 +1,48 @@
+{
+  "node": {
+    "name": "my-mac-mini",
+    "owner": "your-name",
+    "region": "hawaii"
+  },
+  "server": {
+    "url": "https://moilol.com:8333"
+  },
+  "capabilities": {
+    "whisper": {
+      "enabled": true,
+      "models": ["base", "small"],
+      "maxConcurrent": 1
+    },
+    "stable-diffusion": {
+      "enabled": true,
+      "url": "http://localhost:7860",
+      "maxConcurrent": 1
+    },
+    "ollama": {
+      "enabled": true,
+      "models": ["llama3.1:8b"],
+      "maxConcurrent": 2
+    },
+    "ffmpeg": {
+      "enabled": true,
+      "maxConcurrent": 2
+    }
+  },
+  "limits": {
+    "maxCpuPercent": 80,
+    "maxRamPercent": 70,
+    "maxConcurrentJobs": 3,
+    "maxFileSizeMB": 50
+  },
+  "schedule": {
+    "enabled": false,
+    "timezone": "Pacific/Honolulu",
+    "available": [
+      { "days": ["mon","tue","wed","thu","fri"], "start": "22:00", "end": "08:00" },
+      { "days": ["sat","sun"], "start": "00:00", "end": "23:59" }
+    ]
+  },
+  "pricing": {
+    "multiplier": 1.0
+  }
+}
