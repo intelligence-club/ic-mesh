@@ -31,7 +31,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const storage = require('./lib/storage');
 const Reputation = require('./lib/reputation');
-const Ought = require('./lib/ought');
+const Ints = require('./lib/ints');
 
 const PORT = 8333;
 const DATA_DIR = path.join(__dirname, 'data');
@@ -50,7 +50,7 @@ db.pragma('busy_timeout = 5000');
 const reputation = new Reputation(db);
 
 // Ought currency (zero-sum integer ledger — uses same DB)
-const ought = new Ought(db);
+const ints = new Ints(db);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS nodes (
@@ -327,11 +327,11 @@ function completeJob(jobId, nodeId, result) {
     });
   } catch (e) { console.error('  ✗ Reputation event failed:', e.message); }
   
-  // Settle payment in ought (zero-sum: requester pays, worker earns)
+  // Settle payment in ints (zero-sum: requester pays, worker earns)
   try {
     if (job.requester && job.requester !== nodeId) {
-      const tx = ought.settleJob(job.requester, nodeId, computeMs, jobId, completed.type);
-      console.log(`  ◎ Settled: ${tx.amount} ought (${job.requester} → ${nodeId})`);
+      const tx = ints.settleJob(job.requester, nodeId, computeMs, jobId, completed.type);
+      console.log(`  ◎ Settled: ${tx.amount} ints (${job.requester} → ${nodeId})`);
     }
   } catch (e) { console.error('  ✗ Ought settlement failed:', e.message); }
   
@@ -594,24 +594,24 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---- Ought Currency ----
-    if (method === 'GET' && pathname === '/ought/stats') {
-      return json(res, ought.getNetworkStats());
+    if (method === 'GET' && pathname === '/ints/stats') {
+      return json(res, ints.getNetworkStats());
     }
 
-    if (method === 'GET' && pathname === '/ought/audit') {
-      return json(res, ought.audit());
+    if (method === 'GET' && pathname === '/ints/audit') {
+      return json(res, ints.audit());
     }
 
-    if (method === 'GET' && pathname.match(/^\/ought\/[a-zA-Z0-9_-]+\/ledger$/)) {
+    if (method === 'GET' && pathname.match(/^\/ints\/[a-zA-Z0-9_-]+\/ledger$/)) {
       const accountId = pathname.split('/')[2];
       const limit = parseInt(url.searchParams.get('limit')) || 50;
-      return json(res, { accountId, transactions: ought.getLedger(accountId, { limit }) });
+      return json(res, { accountId, transactions: ints.getLedger(accountId, { limit }) });
     }
 
-    if (method === 'GET' && pathname.match(/^\/ought\/[a-zA-Z0-9_-]+$/)) {
+    if (method === 'GET' && pathname.match(/^\/ints\/[a-zA-Z0-9_-]+$/)) {
       const accountId = pathname.split('/')[2];
       if (accountId === 'stats' || accountId === 'audit') { /* handled above */ }
-      else return json(res, ought.getAccount(accountId));
+      else return json(res, ints.getAccount(accountId));
     }
 
     // ---- Ledger (legacy) ----
@@ -677,7 +677,7 @@ const server = http.createServer(async (req, res) => {
         reputation: {
           leaderboard: reputation.getLeaderboard({ limit: 5 })
         },
-        ought: ought.getNetworkStats()
+        ints: ints.getNetworkStats()
       });
     }
     
