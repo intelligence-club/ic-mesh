@@ -75,6 +75,18 @@ function getCapabilities() {
     const arch = execSync('uname -m', { encoding: 'utf8' }).trim();
     if (arch === 'arm64' && process.platform === 'darwin') caps.push('gpu-metal');
   } catch {}
+
+  // Check for Stable Diffusion (A1111 / ComfyUI)
+  try {
+    const resp = execSync('curl -s -o /dev/null -w "%{http_code}" http://localhost:7860/sdapi/v1/sd-models --max-time 2', { encoding: 'utf8' }).trim();
+    if (resp === '200') caps.push('stable-diffusion');
+  } catch {}
+
+  // Check for ComfyUI
+  try {
+    const resp = execSync('curl -s -o /dev/null -w "%{http_code}" http://localhost:8188/system_stats --max-time 2', { encoding: 'utf8' }).trim();
+    if (resp === '200') caps.push('comfyui');
+  } catch {}
   
   return caps;
 }
@@ -192,6 +204,8 @@ async function executeJob(job) {
       return await runInference(job.payload);
     case 'transcribe':
       return await runTranscribe(job.payload);
+    case 'generate':
+      return await runGenerate(job.payload);
     case 'ping':
       return { pong: true, node: NODE_NAME, time: Date.now() };
     default:
@@ -214,6 +228,102 @@ async function runInference(payload) {
   } catch (e) {
     throw new Error(`Ollama inference failed: ${e.message}`);
   }
+}
+
+async function runGenerate(payload) {
+  const SD_URL = process.env.IC_SD_URL || 'http://localhost:7860';
+  
+  const params = {
+    prompt: payload.prompt || '',
+    negative_prompt: payload.negative_prompt || '',
+    width: payload.width || 1024,
+    height: payload.height || 1024,
+    steps: payload.steps || 30,
+    cfg_scale: payload.cfg_scale || 5,
+    sampler_name: payload.sampler || 'Euler a',
+    seed: payload.seed || -1,
+    batch_size: 1,
+    n_iter: 1
+  };
+
+  // Optionally set the model
+  if (payload.model) {
+    console.log(`  ◉ Switching to model: ${payload.model}`);
+    try {
+      await fetch(`${SD_URL}/sdapi/v1/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sd_model_checkpoint: payload.model })
+      });
+    } catch (e) {
+      console.log(`  ⚠ Model switch failed: ${e.message} (using current model)`);
+    }
+  }
+
+  console.log(`  ◉ Generating image: "${params.prompt.slice(0, 80)}..." (${params.width}x${params.height}, ${params.steps} steps)`);
+
+  const resp = await fetch(`${SD_URL}/sdapi/v1/txt2img`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`SD API error (${resp.status}): ${err.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+
+  if (!data.images || !data.images.length) {
+    throw new Error('No images returned from SD API');
+  }
+
+  // Upload the image to the mesh hub for retrieval
+  const imgBuffer = Buffer.from(data.images[0], 'base64');
+  const filename = `gen-${Date.now()}.png`;
+  
+  // Try to upload to hub
+  try {
+    const boundary = '----ICMesh' + Date.now();
+    const header = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`
+    );
+    const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const body = Buffer.concat([header, imgBuffer, footer]);
+    
+    const uploadResp = await fetch(`${MESH_SERVER}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+      body
+    });
+    const uploadResult = await uploadResp.json();
+    
+    if (uploadResult.url) {
+      return {
+        url: uploadResult.url,
+        width: params.width,
+        height: params.height,
+        prompt: params.prompt,
+        steps: params.steps,
+        seed: data.parameters?.seed || params.seed,
+        sizeBytes: imgBuffer.length
+      };
+    }
+  } catch (e) {
+    console.log(`  ⚠ Hub upload failed: ${e.message}, returning base64`);
+  }
+
+  // Fallback: return base64 (large but works)
+  return {
+    image_base64: data.images[0],
+    width: params.width,
+    height: params.height,
+    prompt: params.prompt,
+    steps: params.steps,
+    seed: data.parameters?.seed || params.seed,
+    sizeBytes: imgBuffer.length
+  };
 }
 
 async function runTranscribe(payload) {
