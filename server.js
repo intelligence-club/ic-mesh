@@ -31,6 +31,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const storage = require('./lib/storage');
 const Reputation = require('./lib/reputation');
+const Ought = require('./lib/ought');
 
 const PORT = 8333;
 const DATA_DIR = path.join(__dirname, 'data');
@@ -47,6 +48,9 @@ db.pragma('busy_timeout = 5000');
 
 // Reputation system (standalone module — uses same DB)
 const reputation = new Reputation(db);
+
+// Ought currency (zero-sum integer ledger — uses same DB)
+const ought = new Ought(db);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS nodes (
@@ -323,6 +327,14 @@ function completeJob(jobId, nodeId, result) {
     });
   } catch (e) { console.error('  ✗ Reputation event failed:', e.message); }
   
+  // Settle payment in ought (zero-sum: requester pays, worker earns)
+  try {
+    if (job.requester && job.requester !== nodeId) {
+      const tx = ought.settleJob(job.requester, nodeId, computeMs, jobId, completed.type);
+      console.log(`  ◎ Settled: ${tx.amount} ought (${job.requester} → ${nodeId})`);
+    }
+  } catch (e) { console.error('  ✗ Ought settlement failed:', e.message); }
+  
   // Notify via WebSocket
   broadcastEvent('job.completed', { jobId, type: completed.type, computeMs, nodeId });
   
@@ -581,7 +593,28 @@ const server = http.createServer(async (req, res) => {
       return json(res, reputation.getScore(nodeId));
     }
 
-    // ---- Ledger ----
+    // ---- Ought Currency ----
+    if (method === 'GET' && pathname === '/ought/stats') {
+      return json(res, ought.getNetworkStats());
+    }
+
+    if (method === 'GET' && pathname === '/ought/audit') {
+      return json(res, ought.audit());
+    }
+
+    if (method === 'GET' && pathname.match(/^\/ought\/[a-zA-Z0-9_-]+\/ledger$/)) {
+      const accountId = pathname.split('/')[2];
+      const limit = parseInt(url.searchParams.get('limit')) || 50;
+      return json(res, { accountId, transactions: ought.getLedger(accountId, { limit }) });
+    }
+
+    if (method === 'GET' && pathname.match(/^\/ought\/[a-zA-Z0-9_-]+$/)) {
+      const accountId = pathname.split('/')[2];
+      if (accountId === 'stats' || accountId === 'audit') { /* handled above */ }
+      else return json(res, ought.getAccount(accountId));
+    }
+
+    // ---- Ledger (legacy) ----
     if (method === 'GET' && pathname.match(/^\/ledger\/.+$/)) {
       const nodeId = pathname.split('/')[2];
       const entry = stmts.getLedger.get(nodeId) || { earned: 0, spent: 0, jobs: 0 };
@@ -643,7 +676,8 @@ const server = http.createServer(async (req, res) => {
         uptime: process.uptime(),
         reputation: {
           leaderboard: reputation.getLeaderboard({ limit: 5 })
-        }
+        },
+        ought: ought.getNetworkStats()
       });
     }
     
