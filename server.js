@@ -30,6 +30,7 @@ const Database = require('better-sqlite3');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const storage = require('./lib/storage');
+const Reputation = require('./lib/reputation');
 
 const PORT = 8333;
 const DATA_DIR = path.join(__dirname, 'data');
@@ -43,6 +44,9 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
+
+// Reputation system (standalone module — uses same DB)
+const reputation = new Reputation(db);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS nodes (
@@ -308,6 +312,17 @@ function completeJob(jobId, nodeId, result) {
   
   const completed = jobToJSON(stmts.getJob.get(jobId));
   
+  // Record reputation event
+  try {
+    reputation.recordEvent({
+      nodeId,
+      type: 'job_completed',
+      jobId,
+      jobType: completed.type,
+      details: { claimed_time: computeMs, actual_time: computeMs }
+    });
+  } catch (e) { console.error('  ✗ Reputation event failed:', e.message); }
+  
   // Notify via WebSocket
   broadcastEvent('job.completed', { jobId, type: completed.type, computeMs, nodeId });
   
@@ -473,6 +488,14 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       data.ip = req.socket.remoteAddress;
       const node = registerNode(data);
+      // Track uptime for reputation (throttled to 1 event per 5 min per node)
+      try {
+        const last = checkinTracker.get(node.nodeId) || 0;
+        if (Date.now() - last > 300000) {
+          reputation.recordEvent({ nodeId: node.nodeId, type: 'uptime_checkin' });
+          checkinTracker.set(node.nodeId, Date.now());
+        }
+      } catch (e) {}
       return json(res, { ok: true, node });
     }
     
@@ -524,7 +547,45 @@ const server = http.createServer(async (req, res) => {
       if (!job) return json(res, { error: 'Job not found' }, 404);
       if (data.nodeId && job.claimedBy !== data.nodeId) return json(res, { error: 'Not your job' }, 403);
       stmts.failJob.run(JSON.stringify({ error: data.error || 'Client reported failure' }), jobId);
+      try {
+        reputation.recordEvent({
+          nodeId: job.claimedBy || data.nodeId,
+          type: 'job_failed',
+          jobId,
+          jobType: job.type,
+          details: { error: data.error }
+        });
+      } catch (e) { console.error('  ✗ Reputation event failed:', e.message); }
       return json(res, { ok: true, job: jobToJSON(stmts.getJob.get(jobId)) });
+    }
+
+    // ---- Reputation ----
+    if (method === 'GET' && pathname.match(/^\/reputation\/leaderboard$/)) {
+      const limit = parseInt(url.searchParams.get('limit')) || 20;
+      return json(res, { leaderboard: reputation.getLeaderboard({ limit }) });
+    }
+
+    if (method === 'GET' && pathname.match(/^\/reputation\/[a-f0-9]+\/history$/)) {
+      const nodeId = pathname.split('/')[2];
+      const limit = parseInt(url.searchParams.get('limit')) || 50;
+      return json(res, { events: reputation.getHistory(nodeId, { limit }) });
+    }
+
+    if (method === 'GET' && pathname.match(/^\/reputation\/[a-f0-9]+$/)) {
+      const nodeId = pathname.split('/')[2];
+      return json(res, reputation.getScore(nodeId));
+    }
+
+    if (method === 'POST' && pathname === '/reputation/rate') {
+      const data = await parseBody(req);
+      if (!data.jobId || !data.nodeId || !data.rating) return json(res, { error: 'jobId, nodeId, rating required' }, 400);
+      const result = reputation.recordEvent({
+        nodeId: data.nodeId,
+        type: 'submitter_rating',
+        jobId: data.jobId,
+        details: { rating: Math.min(5, Math.max(1, data.rating)), comment: data.comment }
+      });
+      return json(res, { ok: true, ...result });
     }
 
     // ---- Ledger ----
@@ -586,7 +647,10 @@ const server = http.createServer(async (req, res) => {
           treasuryMinutes: Math.round(treasury.earned * 100) / 100
         },
         websocket: { connected: wsClients.size },
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        reputation: {
+          leaderboard: reputation.getLeaderboard({ limit: 5 })
+        }
       });
     }
     
@@ -690,6 +754,12 @@ storage.initSpaces().then(ok => {
   if (!ok) console.log('  📁 Storage: local disk (set DO_SPACES_KEY/SECRET for Spaces)');
 });
 
+// Reputation: record uptime on checkin, decay scores daily
+const checkinTracker = new Map(); // nodeId -> lastCheckinTimestamp
+setInterval(() => {
+  try { reputation.decayScores(); } catch (e) { console.error('Reputation decay error:', e.message); }
+}, 86400000); // Daily
+
 // Reap stale claimed jobs every 60s (no zombies)
 const JOB_CLAIM_TTL = { ping: 30000, inference: 600000, transcribe: 900000, generate: 1200000, default: 600000 };
 setInterval(() => {
@@ -700,6 +770,15 @@ setInterval(() => {
     if (Date.now() - job.claimedAt > ttl) {
       console.log(`◉ Reaper: job ${job.jobId} (${job.type}) timed out after ${Math.round((Date.now() - job.claimedAt)/1000)}s`);
       stmts.failJob.run(JSON.stringify({ error: `Reaped: no completion after ${Math.round(ttl/1000)}s` }), job.jobId);
+      try {
+        reputation.recordEvent({
+          nodeId: job.claimedBy,
+          type: 'job_timeout',
+          jobId: job.jobId,
+          jobType: job.type,
+          details: { claimedAt: job.claimedAt, ttl }
+        });
+      } catch (e) {}
     }
   }
 }, 60000);
