@@ -123,6 +123,8 @@ const stmts = {
   getLedger: db.prepare('SELECT * FROM ledger WHERE nodeId = ?'),
   
   updateNodeStats: db.prepare('UPDATE nodes SET jobsCompleted = jobsCompleted + 1, computeMinutes = computeMinutes + ? WHERE nodeId = ?'),
+  findNodeByNameOwner: db.prepare('SELECT nodeId FROM nodes WHERE name = ? AND owner = ?'),
+  getClaimedStale: db.prepare("SELECT * FROM jobs WHERE status = 'claimed' AND claimedAt < ?"),
 };
 
 function migrateFromJSON() {
@@ -221,7 +223,12 @@ function jobToJSON(row) {
 }
 
 function registerNode(data) {
-  const id = data.nodeId || genId();
+  // Dedup: if client sends an ID we know, use it. Otherwise match by name+owner.
+  let id = data.nodeId;
+  if (!id || !stmts.getNode.get(id)) {
+    const existing = stmts.findNodeByNameOwner.get(data.name || 'unnamed', data.owner || 'unknown');
+    id = existing ? existing.nodeId : genId();
+  }
   const now = Date.now();
   stmts.upsertNode.run({
     nodeId: id, name: data.name || 'unnamed', ip: data.ip || 'unknown',
@@ -509,6 +516,17 @@ const server = http.createServer(async (req, res) => {
       return json(res, { ok: true, job });
     }
     
+    // ---- Job Failure ----
+    if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/fail$/)) {
+      const jobId = pathname.split('/')[2];
+      const data = await parseBody(req);
+      const job = stmts.getJob.get(jobId);
+      if (!job) return json(res, { error: 'Job not found' }, 404);
+      if (data.nodeId && job.claimedBy !== data.nodeId) return json(res, { error: 'Not your job' }, 403);
+      stmts.failJob.run(JSON.stringify({ error: data.error || 'Client reported failure' }), jobId);
+      return json(res, { ok: true, job: jobToJSON(stmts.getJob.get(jobId)) });
+    }
+
     // ---- Ledger ----
     if (method === 'GET' && pathname.match(/^\/ledger\/.+$/)) {
       const nodeId = pathname.split('/')[2];
@@ -658,6 +676,20 @@ setupWebSocket(server);
 storage.initSpaces().then(ok => {
   if (!ok) console.log('  📁 Storage: local disk (set DO_SPACES_KEY/SECRET for Spaces)');
 });
+
+// Reap stale claimed jobs every 60s (no zombies)
+const JOB_CLAIM_TTL = { ping: 30000, inference: 600000, transcribe: 900000, generate: 1200000, default: 600000 };
+setInterval(() => {
+  const cutoff = Date.now() - 600000; // conservative: 10 min default
+  const stale = stmts.getClaimedStale.all(cutoff);
+  for (const job of stale) {
+    const ttl = JOB_CLAIM_TTL[job.type] || JOB_CLAIM_TTL.default;
+    if (Date.now() - job.claimedAt > ttl) {
+      console.log(`◉ Reaper: job ${job.jobId} (${job.type}) timed out after ${Math.round((Date.now() - job.claimedAt)/1000)}s`);
+      stmts.failJob.run(JSON.stringify({ error: `Reaped: no completion after ${Math.round(ttl/1000)}s` }), job.jobId);
+    }
+  }
+}, 60000);
 
 // Cleanup expired uploads every hour
 setInterval(async () => {
