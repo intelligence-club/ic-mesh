@@ -89,6 +89,12 @@ db.exec(`
     spent REAL DEFAULT 0,
     jobs INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS payouts (
+    nodeId TEXT PRIMARY KEY,
+    earned_cents INTEGER DEFAULT 0,
+    jobs_paid INTEGER DEFAULT 0
+  );
 `);
 
 // ===== PREPARED STATEMENTS =====
@@ -121,6 +127,14 @@ const stmts = {
     ON CONFLICT(nodeId) DO UPDATE SET earned = earned + ?, spent = spent + ?, jobs = jobs + ?
   `),
   getLedger: db.prepare('SELECT * FROM ledger WHERE nodeId = ?'),
+  
+  // Integer-based payouts (cents)
+  upsertPayout: db.prepare(`
+    INSERT INTO payouts (nodeId, earned_cents, jobs_paid) VALUES (?, ?, ?)
+    ON CONFLICT(nodeId) DO UPDATE SET earned_cents = earned_cents + excluded.earned_cents, jobs_paid = jobs_paid + excluded.jobs_paid
+  `),
+  getPayout: db.prepare('SELECT * FROM payouts WHERE nodeId = ?'),
+  getAllPayouts: db.prepare('SELECT * FROM payouts ORDER BY earned_cents DESC'),
   
   updateNodeStats: db.prepare('UPDATE nodes SET jobsCompleted = jobsCompleted + 1, computeMinutes = computeMinutes + ? WHERE nodeId = ?'),
   findNodeByNameOwner: db.prepare('SELECT nodeId FROM nodes WHERE name = ? AND owner = ?'),
@@ -283,6 +297,18 @@ function getAvailableJobs(nodeId) {
 }
 
 function claimJob(jobId, nodeId) {
+  // Verify node has required capabilities before allowing claim
+  const job = stmts.getJob.get(jobId);
+  if (!job || job.status !== 'pending') return null;
+  const req = JSON.parse(job.requirements || '{}');
+  if (req.capability) {
+    const node = stmts.getNode.get(nodeId);
+    const caps = node ? JSON.parse(node.capabilities || '[]') : [];
+    if (!caps.includes(req.capability)) {
+      console.log(`  ⚠ Node ${nodeId.slice(0,8)} rejected claim on ${jobId.slice(0,8)}: missing capability '${req.capability}'`);
+      return null;
+    }
+  }
   const info = stmts.claimJob.run(nodeId, Date.now(), jobId);
   if (info.changes === 0) return null;
   return jobToJSON(stmts.getJob.get(jobId));
@@ -295,21 +321,41 @@ function completeJob(jobId, nodeId, result) {
   const now = Date.now();
   const computeMs = now - job.claimedAt;
   const computeMinutes = computeMs / 60000;
-  const networkCut = computeMinutes * 0.20;
-  const workerPay = computeMinutes - networkCut;
   
-  stmts.completeJob.run(now, JSON.stringify(result.data || null), computeMs, computeMinutes, jobId, nodeId);
+  // Parse job payload to get price_cents if set by the payment system
+  let priceCents = 0;
+  try {
+    const payload = JSON.parse(job.payload || '{}');
+    priceCents = parseInt(payload.price_cents) || 0;
+  } catch(e) {}
+  
+  // Revenue split: 80% node, 15% treasury, 5% infra (all integer cents)
+  const nodeCut = Math.floor(priceCents * 80 / 100);
+  const treasuryCut = Math.floor(priceCents * 15 / 100);
+  const infraCut = priceCents - nodeCut - treasuryCut; // remainder to infra (avoids rounding loss)
+  
+  stmts.completeJob.run(now, JSON.stringify(result.data || null), computeMs, priceCents, jobId, nodeId);
   stmts.updateNodeStats.run(computeMinutes, nodeId);
   
-  // Update ledger
+  // Legacy ledger (compute minutes)
+  const networkCut = computeMinutes * 0.20;
+  const workerPay = computeMinutes - networkCut;
   stmts.upsertLedger.run(nodeId, 0, 0, 0, workerPay, 0, 1);
   if (job.requester) stmts.upsertLedger.run(job.requester, 0, 0, 0, 0, computeMinutes, 0);
   stmts.upsertLedger.run('ic-treasury', 0, 0, 0, networkCut, 0, 0);
   
+  // Integer payouts (cents) — the real money tracking
+  if (priceCents > 0) {
+    stmts.upsertPayout.run(nodeId, nodeCut, 1);
+    stmts.upsertPayout.run('ic-treasury', treasuryCut, 0);
+    stmts.upsertPayout.run('ic-infra', infraCut, 0);
+    console.log(`  💰 SPLIT: ${priceCents}¢ → node ${nodeCut}¢ / treasury ${treasuryCut}¢ / infra ${infraCut}¢`);
+  }
+  
   const completed = jobToJSON(stmts.getJob.get(jobId));
   
   // Notify via WebSocket
-  broadcastEvent('job.completed', { jobId, type: completed.type, computeMs, nodeId });
+  broadcastEvent('job.completed', { jobId, type: completed.type, computeMs, nodeId, payout: { node: nodeCut, treasury: treasuryCut, infra: infraCut } });
   
   return completed;
 }
@@ -532,6 +578,18 @@ const server = http.createServer(async (req, res) => {
       const nodeId = pathname.split('/')[2];
       const entry = stmts.getLedger.get(nodeId) || { earned: 0, spent: 0, jobs: 0 };
       return json(res, { nodeId, ...entry, balance: entry.earned - entry.spent });
+    }
+
+    // ---- Payouts (integer cents) ----
+    if (method === 'GET' && pathname === '/payouts') {
+      const all = stmts.getAllPayouts.all();
+      const total = all.reduce((sum, p) => sum + p.earned_cents, 0);
+      return json(res, { payouts: all, total_cents: total, total_usd: (total / 100).toFixed(2) });
+    }
+    if (method === 'GET' && pathname.match(/^\/payouts\/.+$/)) {
+      const nodeId = pathname.split('/')[2];
+      const entry = stmts.getPayout.get(nodeId) || { earned_cents: 0, jobs_paid: 0 };
+      return json(res, { nodeId, earned_cents: entry.earned_cents, earned_usd: (entry.earned_cents / 100).toFixed(2), jobs_paid: entry.jobs_paid });
     }
     
     // ---- Handler Registry ----
