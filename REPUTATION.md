@@ -13,6 +13,18 @@ Reputation answers: "Here's what I know about node X."
 
 ---
 
+## Philosophy: BackRub, Not Yelp
+
+Inspired by Google's original PageRank (codename BackRub): reputation is **not** based on subjective ratings or votes. It's derived entirely from **observable, automated signals** — the computational equivalent of backlinks.
+
+A node doesn't get a good reputation because someone said "5 stars." It gets a good reputation because:
+- It consistently finishes jobs it claims
+- Its outputs pass automated verification
+- Other reputable nodes produce matching results (cross-verification)
+- It does what it advertises
+
+No humans in the loop. Trust propagates through the graph.
+
 ## Core Concepts
 
 ### 1. Trust Score (0–100)
@@ -23,11 +35,13 @@ Every node has a composite trust score derived from observable behavior:
 |--------|--------|-----------------|
 | **Completion Rate** | 30% | Jobs completed vs claimed (did you finish what you started?) |
 | **Honesty Score** | 25% | Advertised capabilities vs actual results (are you what you say you are?) |
-| **Quality Score** | 20% | Verified output quality when checkable (did you do it well?) |
-| **Latency Score** | 15% | Actual vs expected completion time (are you fast?) |
-| **Uptime Score** | 10% | Checkin consistency (are you reliable?) |
+| **Verification Score** | 25% | Automated output verification + cross-node agreement |
+| **Latency Score** | 10% | Actual vs expected completion time (are you fast?) |
+| **Uptime Score** | 10% | Checkin consistency (are you reliably online?) |
 
 New nodes start at **50** (neutral). Score moves slowly — it takes sustained good behavior to reach 90+, and a few bad jobs to drop fast.
+
+**No subjective ratings.** Every signal is machine-observable.
 
 ### 2. Verification Methods
 
@@ -39,11 +53,7 @@ How do we know the work was actually done well?
 - **Inference**: Structured output validation (JSON parses, required fields present, response length reasonable)
 - **ffmpeg**: Output file exists, duration matches expected, codec correct
 
-#### Submitter Verification
-- Job submitters can rate results: 👍/👎 or 1–5 stars
-- Weighted by the submitter's own reputation (spam protection)
-
-#### Cross-Verification
+#### Cross-Verification (the "backlinks")
 - High-value jobs can be submitted to 2+ nodes, results compared
 - Agreement = both get reputation boost
 - Disagreement = flag for review, lower-reputation node takes the hit
@@ -164,11 +174,10 @@ Designed to be independently deployable:
 ```
 GET  /reputation/:nodeId           — Get node's reputation summary
 GET  /reputation/:nodeId/history   — Get reputation events (paginated)
-POST /reputation/event             — Record a reputation event
+POST /reputation/event             — Record a reputation event (internal)
 GET  /reputation/leaderboard       — Top nodes by trust score
 GET  /reputation/capabilities/:cap — Nodes verified for a capability
-POST /reputation/verify            — Trigger verification of a job result
-POST /reputation/rate              — Submitter rates a job result
+POST /reputation/verify            — Trigger automated verification of a job result
 ```
 
 ### Integration with Mesh Server
@@ -249,11 +258,12 @@ This is how you build a **web of trust for compute** — not by trusting claims,
 - [ ] Factor trust score into job routing
 - [ ] Expose `GET /reputation/:nodeId` endpoint
 
-### Phase 2 (Soon) — Verification
-- [ ] Auto-verify transcription output (segment re-check)
-- [ ] Auto-verify image output (valid file, correct dimensions)
-- [ ] Submitter ratings (`POST /reputation/rate`)
-- [ ] Capability confidence tracking
+### Phase 2 (Soon) — Automated Verification
+- [ ] Auto-verify transcription (re-transcribe segment on different node, compare)
+- [ ] Auto-verify image output (valid file, correct dimensions, EXIF)
+- [ ] Auto-verify inference (JSON parses, required fields, response coherence)
+- [ ] Cross-verification: submit high-value jobs to 2 nodes, compare results
+- [ ] Capability confidence tracking (verified/suspect/unverified)
 
 ### Phase 3 (Later) — Network Effects
 - [ ] Leaderboard / dashboard

@@ -576,18 +576,6 @@ const server = http.createServer(async (req, res) => {
       return json(res, reputation.getScore(nodeId));
     }
 
-    if (method === 'POST' && pathname === '/reputation/rate') {
-      const data = await parseBody(req);
-      if (!data.jobId || !data.nodeId || !data.rating) return json(res, { error: 'jobId, nodeId, rating required' }, 400);
-      const result = reputation.recordEvent({
-        nodeId: data.nodeId,
-        type: 'submitter_rating',
-        jobId: data.jobId,
-        details: { rating: Math.min(5, Math.max(1, data.rating)), comment: data.comment }
-      });
-      return json(res, { ok: true, ...result });
-    }
-
     // ---- Ledger ----
     if (method === 'GET' && pathname.match(/^\/ledger\/.+$/)) {
       const nodeId = pathname.split('/')[2];
