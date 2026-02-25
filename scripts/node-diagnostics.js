@@ -48,7 +48,7 @@ class NodeDiagnostics {
   // Load node configuration
   loadConfig() {
     const config = {
-      server: process.env.IC_MESH_SERVER || 'https://moilol.com:8333',
+      server: process.env.IC_MESH_SERVER || 'http://moilol.com:8333',
       nodeName: process.env.IC_NODE_NAME || 'unknown',
       nodeOwner: process.env.IC_NODE_OWNER || 'unknown',
       nodeId: null

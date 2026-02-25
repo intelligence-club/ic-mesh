@@ -73,13 +73,13 @@ Error: getaddrinfo ENOTFOUND undefined
 **OpenClaw Integration:**
 ```bash
 # Set environment variables in your OpenClaw startup script
-export IC_MESH_SERVER="https://moilol.com:8333"
+export IC_MESH_SERVER="http://moilol.com:8333"
 export IC_NODE_NAME="openclaw-$(hostname)"
 export IC_NODE_OWNER="your-name"
 export IC_NODE_REGION="your-location"
 
 # Or create .env file in ic-mesh directory
-echo "IC_MESH_SERVER=https://moilol.com:8333" > .env
+echo "IC_MESH_SERVER=http://moilol.com:8333" > .env
 echo "IC_NODE_NAME=openclaw-$(hostname)" >> .env
 echo "IC_NODE_OWNER=your-name" >> .env
 ```
@@ -228,7 +228,7 @@ ollama pull codellama:7b     # Code generation jobs
 **Diagnosis:**
 ```bash
 # Test connectivity
-curl -I https://moilol.com:8333/status
+curl -I http://moilol.com:8333/status
 ping moilol.com
 
 # Check firewall
@@ -377,7 +377,7 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 tail -f ~/.ic-mesh/logs/jobs.log
 
 # Verify node registration
-curl https://moilol.com:8333/nodes | grep your-node-name
+curl http://moilol.com:8333/nodes | grep your-node-name
 ```
 
 ## OpenClaw-Specific Integration
@@ -397,7 +397,7 @@ Type=simple
 User=openclaw
 WorkingDirectory=/home/openclaw/ic-mesh
 ExecStart=/usr/bin/node client.js
-Environment=IC_MESH_SERVER=https://moilol.com:8333
+Environment=IC_MESH_SERVER=http://moilol.com:8333
 Environment=IC_NODE_NAME=openclaw-%i
 Restart=always
 RestartSec=30
@@ -417,7 +417,7 @@ services:
   ic-mesh:
     build: ./ic-mesh
     environment:
-      - IC_MESH_SERVER=https://moilol.com:8333
+      - IC_MESH_SERVER=http://moilol.com:8333
       - IC_NODE_NAME=openclaw-${HOSTNAME}
       - IC_NODE_OWNER=${USER}
     volumes:
@@ -430,7 +430,7 @@ services:
 **Option 3: OpenClaw startup script integration**
 ```bash
 # Add to your OpenClaw startup script
-export IC_MESH_SERVER="https://moilol.com:8333"
+export IC_MESH_SERVER="http://moilol.com:8333"
 export IC_NODE_NAME="openclaw-$(hostname)"
 export IC_NODE_OWNER="$(whoami)"
 

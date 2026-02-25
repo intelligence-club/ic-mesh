@@ -274,7 +274,7 @@ function createEnvFile() {
 # Copy this file and fill in your values
 
 # Required
-IC_MESH_SERVER=https://moilol.com:8333
+IC_MESH_SERVER=http://moilol.com:8333
 IC_NODE_NAME=my-development-node
 IC_NODE_OWNER=developer
 

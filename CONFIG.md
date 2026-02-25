@@ -61,7 +61,7 @@ Use `node-config.example.json` as a template for advanced features:
 Override any config setting with environment variables:
 
 ```bash
-export IC_MESH_SERVER="https://moilol.com:8333"
+export IC_MESH_SERVER="http://moilol.com:8333"
 export IC_NODE_NAME="my-node"
 export IC_NODE_OWNER="your-name"
 export IC_NODE_REGION="your-region"
