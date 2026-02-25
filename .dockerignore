@@ -1,0 +1,6 @@
+data/mesh.db
+data/mesh.db-wal
+data/mesh.db-shm
+data/uploads/
+node_modules/
+.git/

@@ -482,6 +482,37 @@ const server = http.createServer(async (req, res) => {
   if (method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   
   try {
+    // ---- Presigned Upload URL (client → Spaces direct) ----
+    if (method === 'POST' && pathname === '/upload/presign') {
+      const data = await parseBody(req);
+      const { filename, content_type } = data;
+      if (!filename) return json(res, { error: 'filename required' }, 400);
+      
+      const id = crypto.randomBytes(8).toString('hex');
+      const ext = path.extname(filename) || '.bin';
+      const key = `uploads/${id}${ext}`;
+      const ct = content_type || 'application/octet-stream';
+      
+      const storage = require('./lib/storage');
+      storage.initSpaces();
+      const uploadUrl = await storage.getPresignedUploadUrl(key, ct);
+      const downloadUrl = await storage.getPresignedUrl(key);
+      
+      if (!uploadUrl) {
+        return json(res, { error: 'Spaces not configured, use POST /upload instead' }, 503);
+      }
+      
+      return json(res, {
+        upload_url: uploadUrl,
+        download_url: downloadUrl,
+        key,
+        method: 'PUT',
+        content_type: ct,
+        expires_in: 3600,
+        instructions: 'PUT your file to upload_url with Content-Type header. Use download_url or key in job payloads.'
+      });
+    }
+
     // ---- File Upload ----
     if (method === 'POST' && pathname === '/upload') {
       const chunks = [];
