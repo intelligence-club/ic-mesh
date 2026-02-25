@@ -1229,7 +1229,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(getDashboardHTML());
     }
     
-    json(res, { error: 'not found' }, 404);
+    json(res, { error: 'Route not found', code: 'ROUTE_NOT_FOUND', path: pathname, method, hint: 'See https://github.com/intelligence-club/ic-mesh#payments--operator-payouts for available endpoints' }, 404);
     
   } catch (e) {
     logError('HTTP request handler', e, { 
