@@ -1017,7 +1017,14 @@ const server = http.createServer(async (req, res) => {
       let totalRAM = 0, totalCores = 0;
       for (const node of Object.values(active)) {
         (node.capabilities || []).forEach(c => allCaps.add(c));
-        (node.models || []).forEach(m => allModels.add(m));
+        const nodeModels = node.models || [];
+        if (Array.isArray(nodeModels)) {
+          nodeModels.forEach(m => allModels.add(m));
+        } else if (typeof nodeModels === 'object') {
+          for (const [svc, mList] of Object.entries(nodeModels)) {
+            if (Array.isArray(mList)) mList.forEach(m => allModels.add(`${svc}:${m}`));
+          }
+        }
         totalRAM += node.resources?.ramMB || 0;
         totalCores += node.resources?.cpuCores || 0;
       }

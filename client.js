@@ -245,6 +245,54 @@ function getOllamaModels() {
   } catch { return []; }
 }
 
+async function getSDModels() {
+  const sdUrl = process.env.IC_SD_URL || config.sdUrl;
+  if (!sdUrl) {
+    // Try default ports
+    for (const port of [7860, 7861]) {
+      try {
+        const r = await fetch(`http://localhost:${port}/sdapi/v1/sd-models`, { signal: AbortSignal.timeout(5000) });
+        const models = await r.json();
+        return models.map(m => m.model_name || m.title).filter(Boolean);
+      } catch {}
+    }
+    return [];
+  }
+  try {
+    const r = await fetch(`${sdUrl}/sdapi/v1/sd-models`, { signal: AbortSignal.timeout(5000) });
+    const models = await r.json();
+    return models.map(m => m.model_name || m.title).filter(Boolean);
+  } catch { return []; }
+}
+
+function getWhisperModels() {
+  // Check for whisper model files in common locations
+  const models = [];
+  const whisperPaths = [
+    path.join(os.homedir(), '.cache', 'whisper'),
+    path.join(os.homedir(), 'Library', 'Caches', 'whisper'),
+    '/usr/local/share/whisper/models'
+  ];
+  for (const p of whisperPaths) {
+    try {
+      const files = fs.readdirSync(p).filter(f => f.endsWith('.bin') || f.endsWith('.pt'));
+      for (const f of files) {
+        const match = f.match(/(tiny|base|small|medium|large(?:-v[23])?)/);
+        if (match) models.push(match[1]);
+      }
+    } catch {}
+  }
+  // Also check if whisper CLI reports models
+  if (models.length === 0) {
+    try {
+      const out = execSync('whisper --help 2>&1 || true', { encoding: 'utf8', timeout: 5000 });
+      const match = out.match(/model.*?{([^}]+)}/);
+      if (match) models.push(...match[1].split(',').map(s => s.trim()));
+    } catch {}
+  }
+  return [...new Set(models)];
+}
+
 // ===== Network Communication =====
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -828,7 +876,14 @@ async function checkin() {
   if (shuttingDown) return;
   const sysInfo = getSystemInfo();
   const capabilities = getCapabilities();
-  const models = getOllamaModels();
+  const ollamaModels = getOllamaModels();
+  const sdModels = await getSDModels();
+  const whisperModels = getWhisperModels();
+  const models = {
+    ollama: ollamaModels,
+    ...(sdModels.length > 0 ? { 'stable-diffusion': sdModels } : {}),
+    ...(whisperModels.length > 0 ? { whisper: whisperModels } : {})
+  };
   const resources = checkResourceLimits();
   const scheduleActive = isScheduleActive();
 
@@ -863,7 +918,8 @@ async function checkin() {
       console.log(`◉ Registered as node: ${nodeId}`);
       console.log(`  Name: ${NODE_NAME} | Owner: ${NODE_OWNER} | Region: ${NODE_REGION}`);
       console.log(`  Caps: ${capabilities.join(', ') || 'none'}`);
-      console.log(`  Models: ${models.join(', ') || 'none'}`);
+      const modelSummary = Object.entries(models).filter(([k,v]) => v.length > 0).map(([k,v]) => `${k}: ${v.join(', ')}`).join(' | ');
+      console.log(`  Models: ${modelSummary || 'none'}`);
       console.log(`  RAM: ${sysInfo.ramMB}MB (${sysInfo.ramFreeMB}MB free) | CPU: ${sysInfo.cpuCores}c ${sysInfo.cpuIdle}% idle`);
       console.log(`  Status: ${scheduleActive ? 'Active' : 'Scheduled Off'} | CPU ${resources.cpuUsage}%/${config.limits.maxCpuPercent}% | RAM ${resources.ramUsage}%/${config.limits.maxRamPercent}%`);
       if (Object.keys(config.handlers || {}).length > 0) {
