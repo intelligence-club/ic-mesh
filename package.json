@@ -47,7 +47,9 @@
     "api-test:load": "node scripts/api-testing-framework.js load",
     "api-test:contracts": "node scripts/api-testing-framework.js contracts",
     "api-test:integration": "node scripts/api-testing-framework.js integration",
-    "api-test:edge-cases": "node scripts/api-testing-framework.js edge-cases"
+    "api-test:edge-cases": "node scripts/api-testing-framework.js edge-cases",
+    "health:regenerative": "node scripts/regenerative-health-monitor.js",
+    "health:regenerative:detailed": "node scripts/regenerative-health-monitor.js --detailed"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",

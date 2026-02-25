@@ -803,6 +803,24 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ---- Link existing Stripe account to another node (multi-node operators) ----
+    if (method === 'POST' && pathname === '/nodes/link-stripe') {
+      const data = await parseBody(req);
+      const { nodeId, sourceNodeId } = data;
+      if (!nodeId || !sourceNodeId) return json(res, { error: 'nodeId and sourceNodeId required' }, 400);
+      const target = stmts.getNode.get(nodeId);
+      const source = stmts.getNode.get(sourceNodeId);
+      if (!target) return json(res, { error: 'Target node not found' }, 404);
+      if (!source) return json(res, { error: 'Source node not found' }, 404);
+      if (!source.stripe_account_id) return json(res, { error: 'Source node has no Stripe account' }, 400);
+      // Verify same owner
+      if (source.owner !== target.owner) return json(res, { error: 'Nodes must have the same owner' }, 403);
+      db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?')
+        .run(source.stripe_account_id, source.payout_email || '', nodeId);
+      console.log(`◉ STRIPE LINK: ${target.name} (${nodeId.slice(0,8)}) → ${source.stripe_account_id} (from ${source.name})`);
+      return json(res, { ok: true, nodeId, linked_from: sourceNodeId, stripe_account_id: source.stripe_account_id });
+    }
+
     // ---- Node onboarding status ----
     if (method === 'GET' && pathname.match(/^\/nodes\/[^/]+\/stripe$/)) {
       const nodeId = pathname.split('/')[2];
