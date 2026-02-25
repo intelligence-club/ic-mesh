@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IC Mesh - Connection Health Dashboard</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(45deg, #2c3e50, #34495e);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.2rem;
+            margin-bottom: 5px;
+        }
+        
+        .header .subtitle {
+            opacity: 0.8;
+            font-size: 1.1rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        
+        .stat-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .stat-icon {
+            font-size: 1.5rem;
+            margin-right: 10px;
+        }
+        
+        .stat-title {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .stat-description {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+        }
+        
+        .status-healthy { color: #27ae60; }
+        .status-warning { color: #f39c12; }
+        .status-error { color: #e74c3c; }
+        .status-offline { color: #95a5a6; }
+        
+        .nodes-table {
+            margin: 30px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .table-header {
+            background: #34495e;
+            color: white;
+            padding: 15px;
+            font-weight: 600;
+        }
+        
+        .nodes-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .node-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 2fr 1fr;
+            padding: 15px;
+            border-bottom: 1px solid #ecf0f1;
+            align-items: center;
+        }
+        
+        .node-row:hover {
+            background: #f8f9fa;
+        }
+        
+        .node-id {
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .node-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.healthy { background: #27ae60; }
+        .status-dot.warning { background: #f39c12; }
+        .status-dot.error { background: #e74c3c; }
+        .status-dot.offline { background: #95a5a6; }
+        
+        .refresh-controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-top: 1px solid #e1e8ed;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .refresh-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        
+        .refresh-btn:hover {
+            background: #2980b9;
+        }
+        
+        .error-message {
+            background: #fdf2f2;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>🌐 IC Mesh Network</h1>
+            <div class="subtitle">Connection Health Dashboard</div>
+        </div>
+        
+        <div class="error-message" id="error-message"></div>
+        
+        <div class="stats-grid" id="stats-grid">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <div>Loading network status...</div>
+            </div>
+        </div>
+        
+        <div class="nodes-table" id="nodes-table" style="display: none;">
+            <div class="table-header">
+                📡 Active Nodes
+            </div>
+            <div class="nodes-list" id="nodes-list">
+                <!-- Node data will be loaded here -->
+            </div>
+        </div>
+        
+        <div class="refresh-controls">
+            <div>
+                <label>
+                    <input type="checkbox" id="auto-refresh" checked> 
+                    Auto-refresh every 30 seconds
+                </label>
+            </div>
+            <button class="refresh-btn" onclick="refreshDashboard()">🔄 Refresh Now</button>
+        </div>
+    </div>
+
+    <script>
+        // Security: Strict input sanitization and CSP compliance
+        const REFRESH_INTERVAL = 30000; // 30 seconds
+        let refreshTimer = null;
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+        
+        // Safe DOM element creation and text setting
+        function createSafeElement(tag, className = '', textContent = '') {
+            const element = document.createElement(tag);
+            if (className) element.className = className;
+            if (textContent) element.textContent = textContent; // Use textContent, not innerHTML
+            return element;
+        }
+        
+        // Safe text content setting (prevents XSS)
+        function setSafeText(element, text) {
+            element.textContent = String(text || ''); // Always convert to string
+        }
+        
+        // Sanitize node ID for display (prevent XSS injection)
+        function sanitizeNodeId(nodeId) {
+            if (!nodeId || typeof nodeId !== 'string') return 'unknown';
+            return nodeId.replace(/[<>&"']/g, function(match) {
+                const escapeMap = {
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '&': '&amp;',
+                    '"': '&quot;',
+                    "'": '&#x27;'
+                };
+                return escapeMap[match];
+            });
+        }
+        
+        // Show error with exponential backoff to prevent infinite reload loops
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            setSafeText(errorDiv, `Error: ${message}`);
+            errorDiv.style.display = 'block';
+            
+            // Exponential backoff for retries
+            retryCount++;
+            const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 30000); // Max 30s
+            
+            console.warn(`Dashboard error (attempt ${retryCount}): ${message}`);
+            
+            if (retryCount <= MAX_RETRIES) {
+                setTimeout(() => {
+                    refreshDashboard();
+                }, backoffDelay);
+            } else {
+                setSafeText(errorDiv, `Error: ${message}. Please check server connection and refresh manually.`);
+                stopAutoRefresh();
+            }
+        }
+        
+        // Hide error message
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+            retryCount = 0; // Reset retry count on success
+        }
+        
+        // Create stat card
+        function createStatCard(icon, title, value, description, status = '') {
+            const card = createSafeElement('div', 'stat-card');
+            
+            const header = createSafeElement('div', 'stat-header');
+            const iconEl = createSafeElement('div', 'stat-icon');
+            setSafeText(iconEl, icon);
+            const titleEl = createSafeElement('div', 'stat-title');
+            setSafeText(titleEl, title);
+            
+            header.appendChild(iconEl);
+            header.appendChild(titleEl);
+            
+            const valueEl = createSafeElement('div', `stat-value ${status}`);
+            setSafeText(valueEl, value);
+            
+            const descEl = createSafeElement('div', 'stat-description');
+            setSafeText(descEl, description);
+            
+            card.appendChild(header);
+            card.appendChild(valueEl);
+            card.appendChild(descEl);
+            
+            return card;
+        }
+        
+        // Create node row
+        function createNodeRow(node) {
+            const row = createSafeElement('div', 'node-row');
+            
+            // Node ID (sanitized)
+            const idEl = createSafeElement('div', 'node-id');
+            setSafeText(idEl, sanitizeNodeId(node.id));
+            
+            // Status
+            const statusEl = createSafeElement('div', 'node-status');
+            const dotEl = createSafeElement('div', `status-dot ${node.status}`);
+            const statusText = createSafeElement('span');
+            setSafeText(statusText, node.status);
+            statusEl.appendChild(dotEl);
+            statusEl.appendChild(statusText);
+            
+            // Uptime
+            const uptimeEl = createSafeElement('div');
+            setSafeText(uptimeEl, node.uptime || 'Unknown');
+            
+            // Success Rate
+            const successEl = createSafeElement('div');
+            setSafeText(successEl, `${node.successRate || 0}%`);
+            
+            // Capabilities
+            const capEl = createSafeElement('div');
+            setSafeText(capEl, (node.capabilities || []).join(', '));
+            
+            // Actions (secure button)
+            const actionsEl = createSafeElement('div');
+            const detailsBtn = createSafeElement('button');
+            setSafeText(detailsBtn, 'Details');
+            detailsBtn.onclick = function() { viewNodeDetails(sanitizeNodeId(node.id)); };
+            actionsEl.appendChild(detailsBtn);
+            
+            row.appendChild(idEl);
+            row.appendChild(statusEl);
+            row.appendChild(uptimeEl);
+            row.appendChild(successEl);
+            row.appendChild(capEl);
+            row.appendChild(actionsEl);
+            
+            return row;
+        }
+        
+        // View node details (secure implementation)
+        function viewNodeDetails(sanitizedNodeId) {
+            if (!sanitizedNodeId || sanitizedNodeId === 'unknown') {
+                alert('Invalid node ID');
+                return;
+            }
+            
+            // Safe alert with sanitized content
+            alert(`Node details for ${sanitizedNodeId}:\n\nDetailed view would show:\n- Performance metrics\n- Job history\n- System resources\n- Network connectivity\n\n(Feature to be implemented)`);
+        }
+        
+        // Fetch dashboard data
+        async function fetchDashboardData() {
+            try {
+                const response = await fetch('/health', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Fetch error:', error);
+                throw error;
+            }
+        }
+        
+        // Update dashboard display
+        function updateDashboard(data) {
+            hideError();
+            
+            // Update stats
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = '';
+            
+            // Server status
+            const serverStatus = data.status === 'healthy' ? 'healthy' : 'error';
+            statsGrid.appendChild(createStatCard(
+                '🖥️', 
+                'Server Status', 
+                data.status || 'Unknown', 
+                `Uptime: ${data.uptime || 'Unknown'}`,
+                `status-${serverStatus}`
+            ));
+            
+            // Jobs stats
+            const totalJobs = data.jobs?.total || 0;
+            const pendingJobs = data.jobs?.pending || 0;
+            statsGrid.appendChild(createStatCard(
+                '📊', 
+                'Job Queue', 
+                `${pendingJobs} pending`, 
+                `${totalJobs} total jobs processed`,
+                pendingJobs > 50 ? 'status-warning' : 'status-healthy'
+            ));
+            
+            // Nodes stats
+            const totalNodes = data.nodes?.total || 0;
+            const activeNodes = data.nodes?.active || 0;
+            const nodeHealth = activeNodes > 0 ? 'healthy' : 'warning';
+            statsGrid.appendChild(createStatCard(
+                '🌐', 
+                'Network Nodes', 
+                `${activeNodes}/${totalNodes}`, 
+                'Active/Total nodes',
+                `status-${nodeHealth}`
+            ));
+            
+            // Performance stats
+            const successRate = data.performance?.successRate || 0;
+            const perfStatus = successRate > 80 ? 'healthy' : successRate > 50 ? 'warning' : 'error';
+            statsGrid.appendChild(createStatCard(
+                '📈', 
+                'Success Rate', 
+                `${successRate}%`, 
+                'Recent job completion rate',
+                `status-${perfStatus}`
+            ));
+            
+            // Update nodes table if we have node data
+            if (data.nodeDetails && data.nodeDetails.length > 0) {
+                const nodesTable = document.getElementById('nodes-table');
+                const nodesList = document.getElementById('nodes-list');
+                nodesTable.style.display = 'block';
+                nodesList.innerHTML = '';
+                
+                data.nodeDetails.forEach(node => {
+                    nodesList.appendChild(createNodeRow(node));
+                });
+            }
+        }
+        
+        // Main refresh function
+        async function refreshDashboard() {
+            try {
+                const data = await fetchDashboardData();
+                updateDashboard(data);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+        
+        // Auto-refresh control
+        function startAutoRefresh() {
+            stopAutoRefresh(); // Clear existing timer
+            refreshTimer = setInterval(refreshDashboard, REFRESH_INTERVAL);
+        }
+        
+        function stopAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = null;
+            }
+        }
+        
+        // Event handlers
+        document.getElementById('auto-refresh').addEventListener('change', function() {
+            if (this.checked) {
+                startAutoRefresh();
+            } else {
+                stopAutoRefresh();
+            }
+        });
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshDashboard();
+            startAutoRefresh();
+        });
+        
+        // Graceful shutdown handling
+        window.addEventListener('beforeunload', function() {
+            stopAutoRefresh();
+        });
+        
+        // Handle visibility changes (pause when hidden)
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else if (document.getElementById('auto-refresh').checked) {
+                startAutoRefresh();
+                refreshDashboard(); // Refresh immediately when visible again
+            }
+        });
+    </script>
+</body>
+</html>
