@@ -515,10 +515,21 @@ async function runTranscribe(payload, timeoutMs) {
 }
 
 // ===== WebSocket Connection =====
+let wsFailCount = 0;
+const WS_MAX_FAILURES = 3;
 
 function connectWebSocket() {
   if (isConnecting || (wsConnection && wsConnection.readyState === WebSocket.OPEN)) return;
   
+  // After repeated failures, give up on WS and stick with polling
+  if (wsFailCount >= WS_MAX_FAILURES) {
+    if (!pollInterval) {
+      console.log(`◉ WebSocket failed ${wsFailCount} times — switching permanently to HTTP polling`);
+      pollInterval = setInterval(pollJobs, JOB_POLL_INTERVAL);
+    }
+    return;
+  }
+
   isConnecting = true;
   const wsUrl = MESH_SERVER.replace('http://', 'ws://').replace('https://', 'wss://') + `/ws?nodeId=${nodeId}`;
   
@@ -528,6 +539,7 @@ function connectWebSocket() {
   wsConnection.on('open', () => {
     isConnecting = false;
     console.log(`◉ WebSocket connected — job polling disabled`);
+    wsFailCount = 0; // Reset on successful connection
     // Stop HTTP polling fallback if running
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   });
@@ -544,13 +556,16 @@ function connectWebSocket() {
   wsConnection.on('close', (code, reason) => {
     isConnecting = false;
     console.log(`◉ WebSocket disconnected: ${code} ${reason}`);
-    console.log(`  Falling back to HTTP polling...`);
+    wsFailCount++;
+    console.log(`  Falling back to HTTP polling... (failure ${wsFailCount}/${WS_MAX_FAILURES})`);
     // Start HTTP polling as fallback while WS is down
     if (!pollInterval) {
       pollInterval = setInterval(pollJobs, JOB_POLL_INTERVAL);
     }
-    // Reconnect after 5 seconds
-    setTimeout(connectWebSocket, 5000);
+    // Reconnect after 5 seconds (unless max failures reached)
+    if (wsFailCount < WS_MAX_FAILURES) {
+      setTimeout(connectWebSocket, 5000);
+    }
   });
   
   wsConnection.on('error', (err) => {
