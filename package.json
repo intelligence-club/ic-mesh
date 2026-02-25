@@ -16,7 +16,8 @@
     "check-env": "node scripts/env-check.js",
     "backup-db": "cp data/mesh.db data/mesh.db.backup.$(date +%Y%m%d_%H%M%S)",
     "logs": "tail -f data/mesh.log 2>/dev/null || echo 'No log file found'",
-    "test:errors": "node scripts/test-error-handling.js"
+    "test:errors": "node scripts/test-error-handling.js",
+    "health-check": "node scripts/health-check.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
