@@ -31,6 +31,9 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const storage = require('./lib/storage');
 const connect = require('./lib/stripe-connect');
+const RateLimiter = require('./lib/rate-limit');
+
+const rateLimiter = new RateLimiter();
 
 // ===== ERROR HANDLING UTILITIES =====
 function logError(context, error, details = {}) {
@@ -560,6 +563,18 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Node-Id, X-Node-Secret');
   if (method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+
+  // Rate limiting
+  const clientIp = req.socket.remoteAddress || 'unknown';
+  const rlGroup = method === 'POST' && pathname === '/upload' ? 'upload'
+    : method === 'POST' && pathname === '/jobs' ? 'jobs-post'
+    : method === 'POST' && pathname === '/nodes/register' ? 'nodes-register'
+    : 'default';
+  const rl = rateLimiter.check(clientIp, rlGroup);
+  if (!rl.allowed) {
+    res.setHeader('Retry-After', String(rl.retryAfter));
+    return json(res, { error: 'Rate limit exceeded', retry_after: rl.retryAfter }, 429);
+  }
   
   try {
     // ---- Presigned Upload URL (client → Spaces direct) ----
