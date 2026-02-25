@@ -312,6 +312,90 @@ Stripe fee: 0.25% + $0.25 per payout
 - **Payments**: Stripe (raw HTTPS, no SDK) — Connect Express for operators
 - **Protocol**: HTTP polling (v0.1 compat) + WebSocket push (v0.3+)
 
+## Practical Examples & Troubleshooting
+
+### Common API Tasks
+
+**Check network health before submitting jobs:**
+```bash
+# Check if any nodes are online
+curl -s https://moilol.com/mesh/status | jq '.nodes_active'
+
+# See available capabilities
+curl -s https://moilol.com/mesh/nodes | jq '.[].capabilities[]' | sort | uniq
+```
+
+**Upload a file for processing:**
+```bash
+# Get presigned upload URL
+curl -X POST https://moilol.com/mesh/upload/presign \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "my-audio.wav", "content_type": "audio/wav"}'
+
+# Upload directly to the response URL, then use the download_url in your job payload
+```
+
+**Monitor job progress:**
+```bash
+# Submit job and get jobId
+JOB_ID=$(curl -s -X POST https://moilol.com/mesh/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"type":"transcribe","payload":{"url":"https://example.com/audio.wav"}}' | jq -r '.jobId')
+
+# Poll until completion
+while true; do
+  STATUS=$(curl -s "https://moilol.com/mesh/jobs/$JOB_ID" | jq -r '.job.status')
+  echo "Status: $STATUS"
+  [ "$STATUS" = "completed" ] && break
+  sleep 2
+done
+
+# Get final result
+curl -s "https://moilol.com/mesh/jobs/$JOB_ID" | jq '.job.result'
+```
+
+### Error Troubleshooting
+
+**Rate Limited (429):**
+```json
+{"error": "Rate limit exceeded", "retry_after": 60}
+```
+→ Wait the specified seconds before retrying
+
+**Invalid Job Type (400):**
+```json
+{"error": "Invalid job type. Must be one of: transcribe, generate-image, ffmpeg, inference, ocr, pdf-extract"}
+```
+→ Check spelling and available job types
+
+**No Available Nodes (pending forever):**
+```bash
+# Check if any nodes have your required capability
+curl -s https://moilol.com/mesh/nodes | jq '.[] | select(.capabilities | contains(["whisper"]))'
+```
+→ Wait for nodes with the required capability to come online
+
+**File Not Found (404):**
+```json
+{"error": "File not found", "suggestion": "Check filename or upload the file first"}
+```
+→ Verify the file was uploaded successfully before referencing it
+
+**Authentication Errors (401):**
+```json
+{"error": "Authorization: Bearer <api_key> required"}
+```
+→ Include your API key in the Authorization header
+
+### Performance Tips
+
+- **Batch jobs**: Submit multiple small jobs rather than one large job for better parallelization
+- **Use presigned uploads**: For large files, upload to Spaces first rather than POSTing directly
+- **Monitor node availability**: Check `/mesh/nodes` to see which capabilities are online
+- **Set appropriate timeouts**: Complex jobs may need longer timeout values
+
+---
+
 ## Testing
 
 ```bash

@@ -573,7 +573,12 @@ const server = http.createServer(async (req, res) => {
   const rl = rateLimiter.check(clientIp, rlGroup);
   if (!rl.allowed) {
     res.setHeader('Retry-After', String(rl.retryAfter));
-    return json(res, { error: 'Rate limit exceeded', retry_after: rl.retryAfter }, 429);
+    return json(res, { 
+      error: 'Rate limit exceeded', 
+      detail: `Too many requests from ${clientIp}`, 
+      retry_after: rl.retryAfter,
+      suggestion: `Wait ${rl.retryAfter} seconds before retrying`
+    }, 429);
   }
   
   try {
@@ -581,7 +586,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname === '/upload/presign') {
       const data = await parseBody(req);
       const { filename, content_type } = data;
-      if (!filename) return json(res, { error: 'filename required' }, 400);
+      if (!filename) return json(res, { error: 'Filename is required', detail: 'Include filename in request body', example: { filename: 'audio.wav' } }, 400);
       
       const id = crypto.randomBytes(8).toString('hex');
       const ext = path.extname(filename) || '.bin';
@@ -594,7 +599,7 @@ const server = http.createServer(async (req, res) => {
       const downloadUrl = await storage.getPresignedUrl(key);
       
       if (!uploadUrl) {
-        return json(res, { error: 'Spaces not configured, use POST /upload instead' }, 503);
+        return json(res, { error: 'DigitalOcean Spaces not configured', detail: 'Presigned URLs unavailable without Spaces setup', alternative: 'Use POST /upload for direct file upload instead' }, 503);
       }
       
       return json(res, {
@@ -631,7 +636,7 @@ const server = http.createServer(async (req, res) => {
               return json(res, { ok: true, url: result.url, filename: result.filename, size: result.size, storage: result.storage });
             }
           }
-          json(res, { error: 'Could not parse upload' }, 400);
+          json(res, { error: 'Invalid file upload format', detail: 'File upload could not be parsed', suggestion: 'Ensure Content-Type is multipart/form-data and file is properly attached' }, 400);
         } catch(e) {
           logError('File upload processing', e, { 
             contentType: req.headers['content-type'], 
@@ -661,7 +666,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname.startsWith('/files/')) {
       const filename = pathname.split('/').pop();
       const filePath = path.join(UPLOAD_DIR, filename);
-      if (!fs.existsSync(filePath)) return json(res, { error: 'Not found' }, 404);
+      if (!fs.existsSync(filePath)) return json(res, { error: 'File not found', detail: `No file named '${filename}' exists`, suggestion: 'Check filename or upload the file first' }, 404);
       const stat = fs.statSync(filePath);
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
@@ -694,7 +699,11 @@ const server = http.createServer(async (req, res) => {
         return json(res, { error: `Invalid job type. Must be one of: ${VALID_JOB_TYPES.join(', ')}`, valid_types: VALID_JOB_TYPES }, 400);
       }
       if (!data.payload || typeof data.payload !== 'object') {
-        return json(res, { error: 'payload object required' }, 400);
+        return json(res, { 
+          error: 'Job payload must be an object', 
+          detail: 'Provide job-specific parameters in the payload field',
+          example: { type: 'transcribe', payload: { audio_url: 'https://example.com/audio.wav', language: 'en' } }
+        }, 400);
       }
       const job = submitJob(data);
       return json(res, { ok: true, job });
@@ -703,7 +712,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname.match(/^\/jobs\/[a-f0-9]+$/) && !pathname.includes('/available')) {
       const jobId = pathname.split('/')[2];
       const row = stmts.getJob.get(jobId);
-      if (!row) return json(res, { error: 'Job not found' }, 404);
+      if (!row) return json(res, { error: 'Job not found', detail: `No job exists with ID '${jobId}'`, suggestion: 'Check the job ID or submit a new job' }, 404);
       return json(res, { job: jobToJSON(row) });
     }
     
@@ -716,7 +725,7 @@ const server = http.createServer(async (req, res) => {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);
       const job = claimJob(jobId, data.nodeId);
-      if (!job) return json(res, { error: 'Job not available' }, 409);
+      if (!job) return json(res, { error: 'Job not available for claiming', detail: 'Job may be already claimed, completed, or not exist', suggestion: 'Check job status with GET /jobs/{id}' }, 409);
       return json(res, { ok: true, job });
     }
     
@@ -733,8 +742,8 @@ const server = http.createServer(async (req, res) => {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);
       const job = stmts.getJob.get(jobId);
-      if (!job) return json(res, { error: 'Job not found' }, 404);
-      if (data.nodeId && job.claimedBy !== data.nodeId) return json(res, { error: 'Not your job' }, 403);
+      if (!job) return json(res, { error: 'Job not found for failure reporting', detail: `No job exists with ID '${jobId}'`, suggestion: 'Verify the job ID is correct' }, 404);
+      if (data.nodeId && job.claimedBy !== data.nodeId) return json(res, { error: 'Job ownership mismatch', detail: `Job ${jobId} is not claimed by node ${data.nodeId}`, current_owner: job.claimedBy }, 403);
       stmts.failJob.run(JSON.stringify({ error: data.error || 'Client reported failure' }), jobId);
       return json(res, { ok: true, job: jobToJSON(stmts.getJob.get(jobId)) });
     }
@@ -771,7 +780,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname === '/nodes/onboard') {
       const data = await parseBody(req);
       const { nodeId, email, country } = data;
-      if (!nodeId || !email) return json(res, { error: 'nodeId and email required' }, 400);
+      if (!nodeId || !email) return json(res, { error: 'Node onboarding requires nodeId and email', detail: 'Both fields are mandatory for Stripe Connect setup', example: { nodeId: 'node-123', email: 'operator@example.com' } }, 400);
       
       const node = stmts.getNode.get(nodeId);
       if (!node) return json(res, { error: 'Node not found. Register first.' }, 404);
@@ -920,7 +929,7 @@ const server = http.createServer(async (req, res) => {
       const cashoutId = pathname.split('/')[2];
       const data = await parseBody(req);
       if (req.headers['x-admin-key'] !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
-        return json(res, { error: 'Unauthorized' }, 401);
+        return json(res, { error: 'Admin authorization required for cashout processing', detail: 'Valid X-Admin-Key header required', help: 'Contact system administrator for access credentials' }, 401);
       }
       db.prepare(`UPDATE cashouts SET status = ?, processed = datetime('now'), payout_method = ? WHERE id = ?`).run(
         data.status || 'completed', data.method || 'manual', cashoutId
@@ -992,7 +1001,7 @@ const server = http.createServer(async (req, res) => {
       
       // Validate required fields
       if (!email || !subject || !body) {
-        return json(res, { error: 'Missing required fields: email, subject, body' }, 400);
+        return json(res, { error: 'Support ticket requires email, subject, and body', detail: 'All three fields are mandatory for ticket creation', example: { email: 'user@example.com', subject: 'API Issue', body: 'Description of the problem' } }, 400);
       }
       
       // Generate ticket ID
@@ -1029,7 +1038,7 @@ const server = http.createServer(async (req, res) => {
       const { email, api_key, category, subject, body, job_id, priority } = data;
       
       if (!email || !subject || !body) {
-        return json(res, { error: 'email, subject, and body required' }, 400);
+        return json(res, { error: 'Ticket creation requires email, subject, and body', detail: 'All three fields must be provided', example: { email: 'user@example.com', subject: 'Billing Question', body: 'I need help with my account balance' } }, 400);
       }
       
       // Generate ticket ID
@@ -1132,7 +1141,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname === '/api/tickets') {
       const adminKey = req.headers['x-admin-key'] || req.headers['authorization']?.replace('Bearer ', '');
       if (adminKey !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
-        return json(res, { error: 'Unauthorized' }, 401);
+        return json(res, { error: 'Admin authorization required for ticket access', detail: 'Valid X-Admin-Key or Authorization Bearer token required', help: 'Contact system administrator for access credentials' }, 401);
       }
       
       const status = url.searchParams.get('status') || null;
@@ -1177,7 +1186,7 @@ const server = http.createServer(async (req, res) => {
       const { sender, body } = data;
       
       if (!sender || !body) {
-        return json(res, { error: 'sender and body required' }, 400);
+        return json(res, { error: 'Message requires sender and body', detail: 'Both fields needed to add a message to the ticket', example: { sender: 'user@example.com', body: 'Thank you for the help!' } }, 400);
       }
       
       const ticket = stmts.getTicket.get(ticketId);
@@ -1257,7 +1266,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname.startsWith('/operator/')) {
       const nodeId = pathname.split('/')[2];
       if (!nodeId) {
-        return json(res, { error: 'Node ID required' }, 400);
+        return json(res, { error: 'Node ID required for payout computation', detail: 'Specify nodeId parameter to calculate earnings', example: { nodeId: 'node-123' } }, 400);
       }
       
       res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -1270,7 +1279,19 @@ const server = http.createServer(async (req, res) => {
       return res.end(getDashboardHTML());
     }
     
-    json(res, { error: 'Route not found', code: 'ROUTE_NOT_FOUND', path: pathname, method, hint: 'See https://github.com/intelligence-club/ic-mesh#payments--operator-payouts for available endpoints' }, 404);
+    json(res, { 
+      error: 'API endpoint not found', 
+      code: 'ROUTE_NOT_FOUND', 
+      requested: `${method} ${pathname}`,
+      available_endpoints: {
+        jobs: 'POST /jobs, GET /jobs/{id}, GET /jobs/available',
+        nodes: 'POST /nodes/register, GET /nodes',
+        files: 'POST /upload, GET /files/{filename}',
+        admin: 'GET /status, GET /health',
+        websocket: 'ws://host:port/ws?nodeId=your-id'
+      },
+      documentation: 'https://github.com/intelligence-club/ic-mesh#api-reference'
+    }, 404);
     
   } catch (e) {
     logError('HTTP request handler', e, { 
