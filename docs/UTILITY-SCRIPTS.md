@@ -8,6 +8,48 @@ This document catalogues all utility scripts available in the IC Mesh project, o
 
 ## 🔍 Analysis & Monitoring
 
+### `node-retention-toolkit.js` ⭐ **NEW**
+**Purpose:** Comprehensive node retention analysis and intervention system  
+**Usage:** 
+- `./node-retention-toolkit.js analyze` - Analyze retention patterns and churn reasons
+- `./node-retention-toolkit.js onboard` - Enhanced onboarding wizard
+- `./node-retention-toolkit.js intervene` - Identify and help at-risk nodes
+- `./node-retention-toolkit.js dashboard` - Real-time retention dashboard
+
+**Key Features:**
+- Identifies churn patterns and success factors
+- Proactive intervention for at-risk nodes
+- Real-time retention metrics and monitoring
+- Addresses the 75% node churn rate challenge
+
+### `auto-onboard.js` ⭐ **NEW**
+**Purpose:** Automated onboarding system for new node operators  
+**Usage:**
+- `./auto-onboard.js new` - Complete onboarding wizard
+- `./auto-onboard.js validate` - Check existing setup
+- `./auto-onboard.js monitor` - Performance monitoring
+- `./auto-onboard.js optimize` - Configuration optimization
+
+**Key Features:**
+- Automatic system capability detection
+- Optimal configuration generation
+- Earnings projections and optimization tips
+- Dependency installation and validation
+
+### `retention-suite.js` ⭐ **NEW**
+**Purpose:** Integrated retention workflow management  
+**Usage:**
+- `./retention-suite.js setup` - Complete new operator setup
+- `./retention-suite.js health` - Network retention health check
+- `./retention-suite.js intervention` - Automated intervention workflow
+- `./retention-suite.js insights` - Generate retention insights report
+
+**Key Features:**
+- Unified interface to all retention tools
+- Automated workflows for maximum node success
+- Comprehensive reporting and diagnostics
+- End-to-end retention solution
+
 ### `analyze-jobs.js`
 **Purpose:** Job queue analysis and health monitoring  
 **Usage:** `node analyze-jobs.js`
