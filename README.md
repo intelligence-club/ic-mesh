@@ -14,10 +14,12 @@ A distributed compute mesh that connects idle hardware into a shared network. Tr
 
 | Service | Price | Powered by |
 |---------|-------|-----------|
-| 🎙️ Transcription | $0.004/min | Whisper on Apple Silicon |
-| 🎨 Image Generation | $0.05/image | Stable Diffusion on local GPUs |
-| 🧠 AI Inference | $0.001/request | Ollama (Llama, Mistral, etc.) |
-| 🎬 Media Processing | $0.01/min | ffmpeg on mesh nodes |
+| 🎙️ Transcription | ~30 ints/min | Whisper on Apple Silicon |
+| 🎨 Image Generation | ~50 ints/image | Stable Diffusion on local GPUs |
+| 🧠 AI Inference | ~10 ints/request | Ollama (Llama, Mistral, etc.) |
+| 🎬 Media Processing | ~20 ints/min | ffmpeg on mesh nodes |
+
+_1,000 ints = $1.00 USD. Buy ints with credit card, earn ints by contributing compute, cash out via Stripe Connect._
 
 ## Join the mesh (3 commands)
 
@@ -34,6 +36,8 @@ node client.js
 ```
 
 Your node auto-detects capabilities (Whisper, Ollama, Stable Diffusion, ffmpeg, GPU) and starts picking up jobs. You keep **80%** of every job's value.
+
+**Perfect for OpenClaw users** — Turn your agent's idle time into earnings. Your OpenClaw setup already has everything needed to join the mesh. No conflicts.
 
 📖 **[Full setup guide →](JOIN.md)**
 
@@ -109,16 +113,19 @@ Revenue split:
 
 - [x] Core mesh (job routing, node registry, ledger)
 - [x] Transcription (Whisper)
-- [x] Image generation (Stable Diffusion)
+- [x] Image generation (Stable Diffusion)  
 - [x] SQLite persistence
 - [x] WebSocket real-time transport
 - [x] DO Spaces file storage
+- [x] Stripe integration (pay-per-job)
+- [x] Node operator payouts (Stripe Connect)
+- [x] Ints currency system (compute credits)
+- [x] Web dashboard with live job feed
+- [x] Account management & cashout system
 - [ ] Ed25519 node authentication
-- [ ] Trust & reputation system
+- [ ] Trust & reputation system  
 - [ ] Hub federation (multi-hub mesh)
-- [ ] Web dashboard with live job feed
-- [ ] Stripe integration (pay-per-job)
-- [ ] Node operator payouts
+- [ ] Advanced job scheduling
 
 ## Links
 
