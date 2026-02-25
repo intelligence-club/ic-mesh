@@ -1544,6 +1544,18 @@ setInterval(() => {
   }
 }, 60000);
 
+// Reap stale PENDING jobs every hour (24h TTL — if no node claims it, it's dead)
+const PENDING_JOB_TTL = 24 * 60 * 60 * 1000; // 24 hours
+setInterval(() => {
+  const cutoff = Date.now() - PENDING_JOB_TTL;
+  const stalePending = db.prepare("SELECT jobId, type, createdAt FROM jobs WHERE status = 'pending' AND createdAt < ?").all(cutoff);
+  for (const job of stalePending) {
+    console.log(`◉ Reaper: pending job ${job.jobId} (${job.type}) expired after 24h unclaimed`);
+    stmts.failJob.run(JSON.stringify({ error: 'Expired: no node claimed this job within 24 hours' }), job.jobId);
+  }
+  if (stalePending.length > 0) console.log(`  🧹 Reaped ${stalePending.length} stale pending jobs`);
+}, 3600000);
+
 // Cleanup expired uploads every hour
 setInterval(async () => {
   try {

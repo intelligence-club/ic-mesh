@@ -40,7 +40,14 @@
     "deploy:history": "node scripts/deployment-automation.js history",
     "deploy:rollback": "node scripts/deployment-automation.js rollback",
     "deploy:validate": "node scripts/deployment-automation.js validate",
-    "deploy:health": "node scripts/deployment-automation.js health"
+    "deploy:health": "node scripts/deployment-automation.js health",
+    "api-test": "node scripts/api-testing-framework.js full",
+    "api-test:security": "node scripts/api-testing-framework.js security",
+    "api-test:performance": "node scripts/api-testing-framework.js performance",
+    "api-test:load": "node scripts/api-testing-framework.js load",
+    "api-test:contracts": "node scripts/api-testing-framework.js contracts",
+    "api-test:integration": "node scripts/api-testing-framework.js integration",
+    "api-test:edge-cases": "node scripts/api-testing-framework.js edge-cases"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
