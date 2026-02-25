@@ -1,6 +1,8 @@
 # Join the IC Mesh Network
 
-Connect your machine to the Intelligence Club compute mesh and start earning real money. Your node contributes processing power to customers worldwide and you get paid 80% of job revenue in USD via Stripe Connect.
+Turn your OpenClaw machine's idle time into real money. Connect to the Intelligence Club compute mesh and get paid 80% of job revenue in USD via Stripe Connect when your machine processes tasks for other users.
+
+**Perfect for OpenClaw users:** Your agent uses compute during work hours, the mesh monetizes your spare cycles during off hours. Cover your API costs and more.
 
 ## Requirements
 
@@ -14,6 +16,24 @@ Connect your machine to the Intelligence Club compute mesh and start earning rea
 - **Whisper** — audio transcription → `pip install openai-whisper`
 - **ffmpeg** — media processing → `brew install ffmpeg` / `apt install ffmpeg`
 - **GPU** — NVIDIA or Apple Silicon (auto-detected)
+
+---
+
+## OpenClaw Integration
+
+**Your OpenClaw setup is already perfect for the mesh.** If you're running OpenClaw, you already have:
+- ✅ Node.js (required)
+- ✅ Always-on machine (ideal for mesh operations)
+- ✅ Network connectivity
+- ✅ Likely have Ollama installed (major earning capability)
+
+**The mesh complements OpenClaw perfectly:**
+- OpenClaw agent works during your active hours
+- IC mesh monetizes spare cycles during downtime
+- Both can use the same Ollama models
+- Your API costs get covered by mesh earnings
+
+**No conflicts:** The mesh client runs independently and doesn't interfere with your OpenClaw agent.
 
 ---
 
