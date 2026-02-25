@@ -102,7 +102,8 @@ async function main() {
           const age = Math.floor((Date.now() - job.createdAt) / 1000);
           console.log(`   ${job.jobId.slice(0, 8)}... (${job.type})`);
           console.log(`     Created: ${age}s ago`);
-          console.log(`     Payload: ${JSON.stringify(job.payload).slice(0, 60)}...`);
+          const payloadSize = JSON.stringify(job.payload).length;
+          console.log(`     Payload: ${payloadSize} bytes (${job.type})`);
           console.log();
         }
         
