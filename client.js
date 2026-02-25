@@ -858,6 +858,17 @@ async function pollJobs() {
   jobRunning = true;
   currentJobId = job.jobId;
 
+  // Mandatory heartbeat — tell server we're alive every 30s even if no real progress
+  const jobHeartbeat = setInterval(async () => {
+    try {
+      await fetch(`${MESH_SERVER}/jobs/${job.jobId}/progress`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId, progress: { stage: 'working', heartbeat: true, pct: 0 } }),
+        signal: AbortSignal.timeout(5000)
+      });
+    } catch {}
+  }, 30000);
+
   try {
     const result = await executeJobSafe(job);
     const resp = await meshFetchRetry(`/jobs/${job.jobId}/complete`, {
@@ -870,7 +881,9 @@ async function pollJobs() {
       method: 'POST', body: JSON.stringify({ nodeId, error: e.message })
     });
   } finally {
+    clearInterval(jobHeartbeat);
     jobRunning = false;
+    currentJobId = null;
   }
 }
 
