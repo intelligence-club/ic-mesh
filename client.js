@@ -538,7 +538,29 @@ async function runTranscribe(payload, timeoutMs) {
     const model = payload.model || 'base';
     const language = payload.language || 'en';
     console.log(`  ◉ Transcribing with whisper (model: ${model})...`);
-    await execWithTimeout(`whisper "${tmpFile}" --model ${model} --language ${language} --output_dir "${outDir}" --output_format txt`, timeoutMs);
+    
+    // Report progress during transcription
+    const fileSizeMB = fs.statSync(tmpFile).size / (1024 * 1024);
+    const estimatedSec = Math.max(10, fileSizeMB * 15); // rough: ~15s per MB
+    const startTime = Date.now();
+    const transcribeProgress = setInterval(async () => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const pct = Math.min(90, Math.round((elapsed / estimatedSec) * 100));
+      const stage = elapsed < 5 ? 'loading model' : 'transcribing';
+      try {
+        await fetch(`${MESH_SERVER}/jobs/${currentJobId}/progress`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodeId, progress: { pct, stage, elapsed: Math.round(elapsed), estimatedTotal: Math.round(estimatedSec) } }),
+          signal: AbortSignal.timeout(3000)
+        });
+      } catch {}
+    }, 2000);
+    
+    try {
+      await execWithTimeout(`whisper "${tmpFile}" --model ${model} --language ${language} --output_dir "${outDir}" --output_format txt`, timeoutMs);
+    } finally {
+      clearInterval(transcribeProgress);
+    }
 
     const txtFiles = fs.readdirSync(outDir).filter(f => f.endsWith('.txt'));
     const transcript = txtFiles.length ? fs.readFileSync(path.join(outDir, txtFiles[0]), 'utf8').trim() : '(no output)';
