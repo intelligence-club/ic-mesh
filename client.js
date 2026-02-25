@@ -533,10 +533,75 @@ async function executeJob(job) {
   switch (job.type) {
     case 'inference': return await runInference(job.payload, getJobTimeout(job));
     case 'transcribe': return await runTranscribe(job.payload, getJobTimeout(job));
+    case 'ffmpeg': return await runFFmpegJob(job, getJobTimeout(job));
     case 'generate': case 'generate-image': return await runGenerate(job.payload, getJobTimeout(job));
     case 'ping': return { pong: true, node: NODE_NAME, time: Date.now(), version: getLocalVersion() };
     default: throw new Error(`Unknown job type: ${job.type}`);
   }
+}
+
+async function runFFmpegJob(job, timeoutMs) {
+  const payload = job.payload || {};
+  const FFMPEG_SERVICE = 'http://localhost:7880';
+  
+  // Check if ffmpeg-service is available (preferred — no shell execution)
+  let useService = false;
+  try {
+    const health = await fetch(`${FFMPEG_SERVICE}/`, { signal: AbortSignal.timeout(2000) });
+    useService = health.ok;
+  } catch {}
+  
+  if (useService) {
+    console.log('  🎬 Using ffmpeg-service (safe API)');
+    
+    // Map job payload to service operation
+    const operation = payload.operation || 'compress';
+    const validOps = ['compress', 'convert', 'extract-audio', 'trim', 'thumbnail', 'info'];
+    if (!validOps.includes(operation)) throw new Error(`Invalid ffmpeg operation: ${operation}. Valid: ${validOps.join(', ')}`);
+    
+    const servicePayload = { url: payload.url, ...payload };
+    delete servicePayload.email;
+    delete servicePayload.job_token;
+    delete servicePayload.price_ints;
+    
+    const resp = await fetch(`${FFMPEG_SERVICE}/api/${operation}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(servicePayload),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    
+    const result = await resp.json();
+    if (!result.success && result.error) throw new Error(result.error);
+    
+    // Upload output file if present
+    if (result.outputFile && fs.existsSync(result.outputFile)) {
+      const fileName = path.basename(result.outputFile);
+      const fileData = fs.readFileSync(result.outputFile);
+      const boundary = '----ICMeshUpload' + Date.now();
+      const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+      const footer = `\r\n--${boundary}--\r\n`;
+      const body = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
+      
+      const uploadRes = await fetch(`${MESH_SERVER}/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        body
+      });
+      const uploadData = await uploadRes.json();
+      if (uploadData.ok && uploadData.url) {
+        result.output_url = uploadData.url;
+        console.log(`  ↑ Uploaded: ${fileName} → ${uploadData.url}`);
+      }
+      delete result.outputFile;
+    }
+    
+    return result;
+  }
+  
+  // Fallback to custom handler (shell script — less safe but works without service)
+  console.log('  ⚠ ffmpeg-service not running, falling back to shell handler');
+  return await runCustomHandler(job, timeoutMs);
 }
 
 async function runInference(payload, timeoutMs) {
