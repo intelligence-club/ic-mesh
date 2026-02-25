@@ -55,7 +55,13 @@
     "health:regenerative:detailed": "node scripts/regenerative-health-monitor.js --detailed",
     "dashboard": "node dashboard/server.js",
     "dashboard:dev": "node dashboard/server.js --port 8335",
-    "dashboard:help": "node dashboard/server.js --help"
+    "dashboard:help": "node dashboard/server.js --help",
+    "setup": "node scripts/onboarding-wizard.js",
+    "onboard": "node scripts/onboarding-wizard.js",
+    "wizard": "node scripts/onboarding-wizard.js",
+    "doctor": "node scripts/node-doctor.js",
+    "diagnose": "node scripts/node-doctor.js",
+    "troubleshoot": "node scripts/node-doctor.js --verbose"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
