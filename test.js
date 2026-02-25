@@ -122,13 +122,14 @@ suite.test('POST /nodes/register creates a node', async () => {
 
 suite.test('POST /jobs creates a job', async () => {
   const jobData = {
-    type: 'transcription',
+    type: 'transcribe',
     payload: { audio_url: 'https://example.com/test.wav' },
     requirements: { capability: 'transcription' }
   };
 
   const res = await suite.request('POST', '/jobs', jobData);
   suite.assertEqual(res.status, 200, 'Should create job successfully');
+  suite.assert(res.data.ok, 'Should return success status');
   suite.assert(res.data.job, 'Should return job object');
   suite.assert(res.data.job.jobId, 'Should return job ID');
 });
@@ -136,7 +137,7 @@ suite.test('POST /jobs creates a job', async () => {
 suite.test('GET /jobs/:id returns job details', async () => {
   // First create a job
   const jobData = {
-    type: 'transcription',
+    type: 'transcribe',
     payload: { audio_url: 'https://example.com/test2.wav' },
     requirements: { capability: 'transcription' }
   };
@@ -148,7 +149,7 @@ suite.test('GET /jobs/:id returns job details', async () => {
   const res = await suite.request('GET', `/jobs/${jobId}`);
   suite.assertEqual(res.status, 200, 'Should return job details');
   suite.assert(res.data.job.jobId === jobId, 'Should return correct job ID');
-  suite.assert(res.data.job.type === 'transcription', 'Should return correct type');
+  suite.assert(res.data.job.type === 'transcribe', 'Should return correct type');
 });
 
 suite.test('GET /jobs/available returns pending jobs', async () => {
@@ -216,7 +217,7 @@ suite.test('Job claiming workflow', async () => {
 
   // Create a job
   const jobData = {
-    type: 'transcription',
+    type: 'transcribe',
     payload: { audio_url: 'https://example.com/claim-test.wav' },
     requirements: { capability: 'transcription' }
   };
@@ -245,7 +246,7 @@ suite.test('Job completion workflow', async () => {
 
   // Create and claim a job
   const jobData = {
-    type: 'transcription',
+    type: 'transcribe',
     payload: { audio_url: 'https://example.com/complete-test.wav' },
     requirements: { capability: 'transcription' }
   };
@@ -315,7 +316,7 @@ suite.test('Job claiming validation', async () => {
 suite.test('Job claiming with invalid node', async () => {
   // Create a job first
   const jobData = {
-    type: 'transcription',
+    type: 'transcribe',
     payload: { audio_url: 'https://example.com/invalid-node-test.wav' },
     requirements: { capability: 'transcription' }
   };
@@ -376,7 +377,7 @@ suite.test('Rate limiting and validation', async () => {
   const promises = [];
   for (let i = 0; i < 5; i++) {
     promises.push(suite.request('POST', '/jobs', {
-      type: 'transcription',
+      type: 'transcribe',
       payload: { audio_url: `https://example.com/rate-test-${i}.wav` },
       requirements: { capability: 'transcription' }
     }));
@@ -390,7 +391,7 @@ suite.test('Rate limiting and validation', async () => {
 suite.test('Large payload handling', async () => {
   // Test with a larger data payload
   const largeData = {
-    type: 'transcription',
+    type: 'transcribe',
     payload: {
       audio_url: 'https://example.com/large-test.wav',
       metadata: {
@@ -567,7 +568,7 @@ suite.test('Root endpoint serves main page', async () => {
 suite.test('POST /jobs/:id/fail endpoint', async () => {
   // Create a job first
   const jobData = {
-    type: 'transcription',
+    type: 'transcribe',
     payload: { audio_url: 'https://example.com/fail-test.wav' },
     requirements: { capability: 'transcription' }
   };
