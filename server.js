@@ -628,6 +628,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ---- Stripe Connect onboarding return redirect ----
+    if (method === 'GET' && pathname === '/onboard') {
+      const u = new URL(req.url, 'https://moilol.com');
+      const nodeId = u.searchParams.get('nodeId') || '';
+      const complete = u.searchParams.get('complete');
+      const refresh = u.searchParams.get('refresh');
+      // Redirect to the main site's onboard page with params
+      const target = complete 
+        ? `https://moilol.com/onboard.html?nodeId=${encodeURIComponent(nodeId)}&complete=true`
+        : `https://moilol.com/onboard.html?nodeId=${encodeURIComponent(nodeId)}&refresh=true`;
+      res.writeHead(302, { Location: target });
+      return res.end();
+    }
+
     // ---- File Serving ----
     if (method === 'GET' && pathname.startsWith('/files/')) {
       const filename = pathname.split('/').pop();
@@ -849,7 +863,15 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname.match(/^\/cashouts\/.+$/)) {
       const nodeId = pathname.split('/')[2];
       const cashouts = db.prepare('SELECT * FROM cashouts WHERE nodeId = ? ORDER BY created DESC LIMIT 50').all(nodeId);
-      return json(res, { nodeId, cashouts });
+      // Enrich with Stripe transfer history if onboarded
+      let stripeTransfers = [];
+      const node = stmts.getNode.get(nodeId);
+      if (node?.stripe_account_id) {
+        try {
+          stripeTransfers = await connect.getTransferHistory(node.stripe_account_id, 20);
+        } catch {}
+      }
+      return json(res, { nodeId, cashouts, stripe_transfers: stripeTransfers });
     }
 
     // ---- Admin: process cashout ----
