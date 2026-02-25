@@ -49,6 +49,27 @@ _1,000 ints = $1.00 USD. Buy ints with credit card, earn ints by contributing co
 
 ---
 
+## 🚀 Quick Start for New Operators
+
+**Want to start earning with your machine? We've got a 3-minute setup:**
+
+```bash
+git clone https://github.com/intelligence-club/ic-mesh.git
+cd ic-mesh
+node scripts/operator-setup.js
+```
+
+This setup script will:
+- ✅ Detect your system capabilities (Ollama, Whisper, FFmpeg)
+- 💰 Show your earning potential ($2-15/day typical)
+- ⚙️ Create optimized configuration
+- 💳 Walk you through payment setup (Stripe Connect)
+- 🚀 Start your node earning immediately
+
+**For manual setup or development:** See detailed [JOIN.md](JOIN.md) guide.
+
+---
+
 ## Complete API Reference
 
 ### Mesh Hub Endpoints (`https://moilol.com/mesh/...`)
