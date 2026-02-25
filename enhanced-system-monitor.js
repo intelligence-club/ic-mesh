@@ -153,7 +153,7 @@ class EnhancedSystemMonitor {
       SELECT 
         claimedBy as nodeId,
         COUNT(*) as totalJobs,
-        AVG(computeMs) as avgComputeTime,
+        AVG(computeMinutes) as avgComputeTime,
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
         COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed
       FROM jobs 
@@ -206,8 +206,8 @@ class EnhancedSystemMonitor {
         type,
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
-        AVG(computeMs) as avgTime,
-        AVG(CASE WHEN status = 'completed' THEN computeMs END) as avgSuccessTime
+        AVG(computeMinutes) as avgTime,
+        AVG(CASE WHEN status = 'completed' THEN computeMinutes END) as avgSuccessTime
       FROM jobs 
       WHERE createdAt > ?
       GROUP BY type
@@ -219,7 +219,7 @@ class EnhancedSystemMonitor {
         jobId,
         type,
         claimedBy,
-        error_message,
+        error,
         createdAt,
         claimedAt,
         completedAt
@@ -341,7 +341,7 @@ class EnhancedSystemMonitor {
         COUNT(*) as totalJobs,
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
         COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
-        AVG(CASE WHEN status = 'completed' THEN computeMs END) as avgProcessTime
+        AVG(CASE WHEN status = 'completed' THEN computeMinutes END) as avgProcessTime
       FROM jobs 
       WHERE createdAt > ?
       GROUP BY date
@@ -557,7 +557,7 @@ class EnhancedSystemMonitor {
     if (jobs.recentFailures.length > 0) {
       console.log('\nRecent Failures:');
       jobs.recentFailures.slice(0, 3).forEach(job => {
-        console.log(`  ❌ ${job.type} (${job.jobId.slice(0, 8)}) - ${job.error_message || 'No error message'}`);
+        console.log(`  ❌ ${job.type} (${job.jobId.slice(0, 8)}) - ${job.error || 'No error message'}`);
       });
     }
     console.log();
@@ -628,7 +628,7 @@ class EnhancedSystemMonitor {
 
   getAverageProcessingTime() {
     const result = this.db.prepare(`
-      SELECT AVG(computeMs) as avg 
+      SELECT AVG(computeMinutes) as avg 
       FROM jobs 
       WHERE status = 'completed' AND createdAt > ?
     `).get(this.currentTime - 86400000);
