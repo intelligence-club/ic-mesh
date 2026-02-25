@@ -369,7 +369,7 @@ function submitJob(data) {
   stmts.insertJob.run({
     jobId: id, type: data.type,
     payload: JSON.stringify(data.payload || {}),
-    requester: data.requester || '',
+    requester: data.requester || data.payload?.email || data.email || '',
     requirements: JSON.stringify(data.requirements || {}),
     createdAt: Date.now()
   });
