@@ -24,6 +24,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
+const { generateKeyPair, sign } = require('./lib/node-auth');
 
 // ===== Configuration =====
 
@@ -35,6 +36,11 @@ const CHECKIN_INTERVAL = 60_000;        // 60s
 const JOB_POLL_INTERVAL = 10_000;       // 10s
 const UPDATE_CHECK_INTERVAL = 300_000;  // 5 min
 const NODE_ID_FILE = path.join(__dirname, '.node-id');
+const NODE_KEY_FILE = path.join(__dirname, '.node-key');
+const NODE_PUBKEY_FILE = path.join(__dirname, '.node-key.pub');
+const MESH_TOKEN = process.env.IC_MESH_TOKEN || '';
+const IC_AUTO_UPDATE = (process.env.IC_AUTO_UPDATE || 'true') !== 'false';
+const IC_AUTO_UPDATE_VERIFY = process.env.IC_AUTO_UPDATE_VERIFY === 'true';
 
 // Job timeout defaults (ms) — payload.timeout (seconds) overrides
 const JOB_TIMEOUTS = {
@@ -46,6 +52,7 @@ const JOB_TIMEOUTS = {
 };
 
 let nodeId = loadNodeId();
+const nodeKeys = loadOrGenerateKeyPair();
 let currentJob = null;
 let activeChildProcess = null;
 let shuttingDown = false;
@@ -63,6 +70,27 @@ function loadNodeId() {
 
 function saveNodeId(id) {
   try { fs.writeFileSync(NODE_ID_FILE, id); } catch {}
+}
+
+function loadOrGenerateKeyPair() {
+  try {
+    const priv = fs.readFileSync(NODE_KEY_FILE, 'utf8').trim();
+    const pub = fs.readFileSync(NODE_PUBKEY_FILE, 'utf8').trim();
+    if (priv && pub) return { privateKey: priv, publicKey: pub };
+  } catch {}
+  const kp = generateKeyPair();
+  try {
+    fs.writeFileSync(NODE_KEY_FILE, kp.privateKey, { mode: 0o600 });
+    fs.writeFileSync(NODE_PUBKEY_FILE, kp.publicKey);
+  } catch (e) { console.error('  ✗ Failed to save keypair:', e.message); }
+  return kp;
+}
+
+function signJobOp(jobId) {
+  const timestamp = Date.now();
+  const data = { jobId, nodeId, timestamp };
+  const signature = sign(nodeKeys.privateKey, data);
+  return { signature, timestamp };
 }
 
 function getLocalVersion() {
@@ -145,7 +173,12 @@ async function meshFetch(urlPath, options = {}) {
     const resp = await fetch(url, {
       ...options,
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', 'X-Node-Id': nodeId || '', ...options.headers }
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Node-Id': nodeId || '',
+        ...(MESH_TOKEN ? { 'Authorization': `Bearer ${MESH_TOKEN}` } : {}),
+        ...options.headers
+      }
     });
     return await resp.json();
   } catch (e) {
@@ -235,6 +268,7 @@ async function executeJob(job) {
 async function runInference(payload, timeoutMs) {
   const model = payload.model || 'llama3.1:8b';
   const prompt = payload.prompt || '';
+  if (prompt.length > 10000) throw new Error('Prompt too long (max 10000 chars)');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -253,6 +287,7 @@ async function runInference(payload, timeoutMs) {
 }
 
 async function runGenerate(payload, timeoutMs) {
+  if (payload.prompt && payload.prompt.length > 2000) throw new Error('Prompt too long (max 2000 chars)');
   const SD_URL = process.env.IC_SD_URL || 'http://localhost:7860';
   const params = {
     prompt: payload.prompt || '', negative_prompt: payload.negative_prompt || '',
@@ -294,8 +329,10 @@ async function runGenerate(payload, timeoutMs) {
       const boundary = '----ICMesh' + Date.now();
       const header = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`);
       const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
+      const uploadHeaders = { 'Content-Type': `multipart/form-data; boundary=${boundary}` };
+      if (MESH_TOKEN) uploadHeaders['Authorization'] = `Bearer ${MESH_TOKEN}`;
       const uploadResp = await fetch(`${MESH_SERVER}/upload`, {
-        method: 'POST', headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        method: 'POST', headers: uploadHeaders,
         body: Buffer.concat([header, imgBuffer, footer])
       });
       const u = await uploadResp.json();
@@ -311,6 +348,18 @@ async function runGenerate(payload, timeoutMs) {
 async function runTranscribe(payload, timeoutMs) {
   const url = payload.url;
   if (!url) throw new Error('No audio URL provided');
+  // Validate URL scheme — only http/https allowed
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`Invalid URL scheme: ${parsed.protocol} (only http/https allowed)`);
+    }
+    // Reject path traversal
+    if (parsed.pathname.includes('..')) throw new Error('Path traversal not allowed');
+  } catch (e) {
+    if (e.message.includes('Invalid URL')) throw new Error('Invalid audio URL');
+    throw e;
+  }
 
   const tmpDir = path.join(os.tmpdir(), 'ic-mesh-jobs');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
@@ -341,11 +390,26 @@ async function runTranscribe(payload, timeoutMs) {
 
 async function checkForUpdates() {
   if (shuttingDown) return;
+  if (!IC_AUTO_UPDATE) return;
   try {
     execSync('git fetch origin main --quiet 2>/dev/null', { cwd: __dirname, timeout: 15000 });
     const local = execSync('git rev-parse HEAD', { cwd: __dirname, encoding: 'utf8', timeout: 5000 }).trim();
     const remote = execSync('git rev-parse origin/main', { cwd: __dirname, encoding: 'utf8', timeout: 5000 }).trim();
     if (local === remote) return;
+
+    // Verify commit signature if configured
+    if (IC_AUTO_UPDATE_VERIFY) {
+      try {
+        const sigStatus = execSync('git log --format=%G? -1 origin/main', { cwd: __dirname, encoding: 'utf8', timeout: 5000 }).trim();
+        if (sigStatus !== 'G' && sigStatus !== 'U') {
+          console.log(`  ⚠ Skipping update: unsigned commit (signature status: ${sigStatus})`);
+          return;
+        }
+      } catch (e) {
+        console.log(`  ⚠ Skipping update: could not verify commit signature: ${e.message}`);
+        return;
+      }
+    }
 
     console.log(`\n◉ Update available: ${local.slice(0,7)} → ${remote.slice(0,7)}`);
     if (currentJob) {
@@ -381,7 +445,8 @@ async function checkin() {
     method: 'POST',
     body: JSON.stringify({
       nodeId, name: NODE_NAME, owner: NODE_OWNER, region: NODE_REGION,
-      capabilities, models, version: getLocalVersion(), ...sysInfo
+      capabilities, models, version: getLocalVersion(),
+      publicKey: nodeKeys.publicKey, ...sysInfo
     })
   });
 
@@ -406,8 +471,9 @@ async function pollJobs() {
   const job = result.jobs[0]; // One at a time
   console.log(`◉ Job: ${job.type} (${job.jobId})`);
 
+  const claimSig = signJobOp(job.jobId);
   const claimed = await meshFetch(`/jobs/${job.jobId}/claim`, {
-    method: 'POST', body: JSON.stringify({ nodeId })
+    method: 'POST', body: JSON.stringify({ nodeId, ...claimSig })
   });
   if (!claimed?.ok) { console.log(`  ✗ Claim failed`); return; }
 
@@ -416,14 +482,16 @@ async function pollJobs() {
 
   try {
     const result = await executeJobSafe(job);
+    const completeSig = signJobOp(job.jobId);
     const resp = await meshFetchRetry(`/jobs/${job.jobId}/complete`, {
-      method: 'POST', body: JSON.stringify({ nodeId, data: result })
+      method: 'POST', body: JSON.stringify({ nodeId, data: result, ...completeSig })
     });
     console.log(`  ✓ Done: ${job.type}${resp?.ok ? '' : ' (not reported)'}`);
   } catch (e) {
     console.error(`  ✗ Failed: ${e.message}`);
+    const failSig = signJobOp(job.jobId);
     await meshFetchRetry(`/jobs/${job.jobId}/fail`, {
-      method: 'POST', body: JSON.stringify({ nodeId, error: e.message })
+      method: 'POST', body: JSON.stringify({ nodeId, error: e.message, ...failSig })
     });
   } finally {
     jobRunning = false;
@@ -445,6 +513,75 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (e) => { console.error(`✗ Uncaught: ${e.message}\n${e.stack}`); });
 process.on('unhandledRejection', (e) => { console.error(`✗ Unhandled: ${e}`); });
 
+// ===== Interview Response =====
+
+async function checkInterviews() {
+  if (!nodeId || shuttingDown) return;
+  try {
+    const result = await meshFetch(`/ahp/interviews?status=pending&nodeId=${nodeId}`);
+    if (!result?.interviews?.length) return;
+
+    // Find interviews for this node
+    const mine = result.interviews.filter(i => i.nodeId === nodeId);
+    if (!mine.length) return;
+
+    for (const interview of mine) {
+      console.log(`◉ Interview request: ${interview.interviewId}`);
+      const responses = generateInterviewResponses(interview.questions);
+      const resp = await meshFetch(`/ahp/interviews/${interview.interviewId}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ responses })
+      });
+      if (resp?.ok) {
+        console.log(`  ✓ Interview completed: ${resp.interview?.decision || 'submitted'}`);
+      } else {
+        console.log(`  ✗ Interview response failed`);
+      }
+    }
+  } catch (e) {
+    // Silent — interviews are optional
+  }
+}
+
+function generateInterviewResponses(questions) {
+  const sysInfo = getSystemInfo();
+  const capabilities = getCapabilities();
+  const models = getOllamaModels();
+
+  return questions.map(q => {
+    let answer = '';
+    const qLower = q.question.toLowerCase();
+
+    if (qLower.includes('tools') || qLower.includes('models') || qLower.includes('walk me through')) {
+      answer = `I run on ${os.platform()} ${os.arch()} with ${sysInfo.cpuCores} CPU cores and ${Math.round(sysInfo.ramMB / 1024)}GB RAM. `;
+      if (capabilities.length) answer += `My capabilities: ${capabilities.join(', ')}. `;
+      if (models.length) answer += `Ollama models: ${models.join(', ')}. `;
+      if (capabilities.includes('stable-diffusion')) answer += 'Stable Diffusion via A1111 API on localhost:7860. ';
+      if (capabilities.includes('whisper')) answer += 'Whisper CLI for transcription. ';
+      if (capabilities.includes('ffmpeg')) answer += 'ffmpeg for media processing. ';
+    } else if (qLower.includes('fail') || qLower.includes('error') || qLower.includes('connectivity')) {
+      answer = 'Failed jobs are reported back to the server immediately with error details. Partial results are discarded to avoid corrupted output. On connectivity loss, active jobs time out and the server reaper reclaims them. I have a graceful shutdown handler that kills child processes cleanly.';
+    } else if (qLower.includes('load') || qLower.includes('resource') || qLower.includes('concurrent')) {
+      answer = `Current: ${sysInfo.cpuCores} cores at ${sysInfo.cpuIdle}% idle, ${sysInfo.ramFreeMB}MB free RAM, ${sysInfo.diskFreeGB}GB free disk. I process one job at a time to avoid resource contention. Throughput depends on job type.`;
+    } else if (qLower.includes('not well') || qLower.includes("can't") || qLower.includes('concern') || qLower.includes('turn down')) {
+      const limits = [];
+      if (!capabilities.includes('gpu-nvidia') && !capabilities.includes('gpu-metal')) limits.push('no GPU acceleration');
+      if (sysInfo.ramMB < 16000) limits.push('limited RAM for large models');
+      if (!capabilities.includes('stable-diffusion')) limits.push('cannot do image generation');
+      if (!capabilities.includes('whisper')) limits.push('cannot do transcription');
+      answer = limits.length
+        ? `Limitations: ${limits.join(', ')}. I stick to what I can reliably deliver.`
+        : `I am well-equipped for my advertised capabilities but I do not overcommit. I process jobs sequentially which limits throughput.`;
+    } else if (qLower.includes('per hour') || qLower.includes('throughput')) {
+      answer = `At current load (${sysInfo.cpuIdle}% CPU idle), I process jobs sequentially. Typical throughput varies by type — small inference jobs take 5-30s, transcription 30-300s depending on audio length and model.`;
+    } else {
+      answer = `Running ${NODE_NAME} (${os.platform()} ${os.arch()}, ${sysInfo.cpuCores} cores, ${Math.round(sysInfo.ramMB/1024)}GB RAM). Capabilities: ${capabilities.join(', ') || 'general compute'}.`;
+    }
+
+    return { questionId: q.id, answer };
+  });
+}
+
 // ===== Main =====
 
 async function main() {
@@ -465,6 +602,10 @@ async function main() {
   setInterval(pollJobs, JOB_POLL_INTERVAL);
   setTimeout(checkForUpdates, 30_000);
   setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL);
+
+  // Check for pending interviews
+  setInterval(checkInterviews, 60_000);
+  setTimeout(checkInterviews, 5000);
 
   console.log(`◉ Running. Checkin ${CHECKIN_INTERVAL/1000}s | Poll ${JOB_POLL_INTERVAL/1000}s | Updates ${UPDATE_CHECK_INTERVAL/1000}s`);
   console.log('  Ctrl+C to leave.\n');

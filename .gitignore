@@ -3,3 +3,6 @@ data/
 .env
 *.log
 .node-id
+data/mesh-token
+.node-key
+.node-key.pub
