@@ -944,7 +944,18 @@ const server = http.createServer(async (req, res) => {
       });
     }
     
-    // ---- Dashboard ----
+    // ---- Operator Dashboard ----
+    if (method === 'GET' && pathname.startsWith('/operator/')) {
+      const nodeId = pathname.split('/')[2];
+      if (!nodeId) {
+        return json(res, { error: 'Node ID required' }, 400);
+      }
+      
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      return res.end(getOperatorDashboardHTML(nodeId));
+    }
+    
+    // ---- Main Dashboard ----
     if (method === 'GET' && pathname === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       return res.end(getDashboardHTML());
