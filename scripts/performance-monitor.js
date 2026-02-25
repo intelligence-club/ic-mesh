@@ -61,10 +61,19 @@ function saveMetric(metric) {
     ...metric
   }) + '\n';
   
-  if (OUTPUT_FILE) {
-    fs.appendFileSync(OUTPUT_FILE, metricLine);
-  } else if (!OUTPUT_FILE) {
-    fs.appendFileSync(METRICS_FILE, metricLine);
+  try {
+    if (OUTPUT_FILE) {
+      fs.appendFileSync(OUTPUT_FILE, metricLine);
+    } else {
+      fs.appendFileSync(METRICS_FILE, metricLine);
+    }
+  } catch (error) {
+    console.error(`[WARN] Failed to save metrics to file: ${error.message}`);
+    // Continue monitoring even if file save fails
+    // Optionally log metrics to console as fallback
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[FALLBACK] Metric data:', JSON.stringify(metric, null, 2));
+    }
   }
 }
 
