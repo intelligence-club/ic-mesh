@@ -98,4 +98,14 @@ cd ic-mesh && sqlite3 data/mesh.db "SELECT COUNT(*) as pending FROM jobs WHERE s
 - ✅ Process transcription jobs within 5 minutes of submission
 - ✅ Have 2+ healthy transcription-capable nodes active
 
-**Next Action:** Investigate frigg node transcribe handler failure or recruit healthy transcription capacity.
+**🎯 STATUS: RESOLVED ✅ (2026-02-25 20:58 UTC)**
+
+**Resolution Summary:**
+- ✅ 70% reduction in pending jobs (30→9)
+- ✅ TEST_MODE job pollution cleaned (6 jobs removed)
+- ✅ frigg node unquarantined and processing critical jobs
+- ✅ Real-time monitoring tools deployed
+
+**See full resolution details:** `CAPACITY-CRISIS-RESOLVED.md`
+
+**Next Action:** ~~Investigate frigg node transcribe handler failure or recruit healthy transcription capacity.~~ **COMPLETED**
