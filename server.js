@@ -1014,6 +1014,7 @@ const server = http.createServer(async (req, res) => {
       
       const allCaps = new Set();
       const allModels = new Set();
+      const modelsByService = {};
       let totalRAM = 0, totalCores = 0;
       for (const node of Object.values(active)) {
         (node.capabilities || []).forEach(c => allCaps.add(c));
@@ -1022,12 +1023,17 @@ const server = http.createServer(async (req, res) => {
           nodeModels.forEach(m => allModels.add(m));
         } else if (typeof nodeModels === 'object') {
           for (const [svc, mList] of Object.entries(nodeModels)) {
-            if (Array.isArray(mList)) mList.forEach(m => allModels.add(`${svc}:${m}`));
+            if (Array.isArray(mList)) {
+              if (!modelsByService[svc]) modelsByService[svc] = new Set();
+              mList.forEach(m => { allModels.add(`${svc}:${m}`); modelsByService[svc].add(m); });
+            }
           }
         }
         totalRAM += node.resources?.ramMB || 0;
         totalCores += node.resources?.cpuCores || 0;
       }
+      // Convert sets to arrays
+      for (const k of Object.keys(modelsByService)) modelsByService[k] = [...modelsByService[k]];
       
       return json(res, {
         network: 'Intelligence Club Mesh',
@@ -1036,7 +1042,7 @@ const server = http.createServer(async (req, res) => {
         nodes: { active: activeCount, total: allNodes.length },
         compute: {
           totalCores, totalRAM_GB: Math.round(totalRAM / 1024 * 10) / 10,
-          capabilities: [...allCaps], models: [...allModels]
+          capabilities: [...allCaps], models: [...allModels], modelsByService
         },
         jobs: {
           total: Object.values(jobCounts).reduce((a, b) => a + b, 0),
