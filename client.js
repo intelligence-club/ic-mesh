@@ -431,9 +431,16 @@ async function runCustomHandler(job) {
     // Download input files if URL provided
     const inputFiles = [];
     if (job.payload?.url) {
-      const ext = path.extname(new URL(job.payload.url).pathname) || '.bin';
+      // Validate URL — must be http(s), no path traversal, no shell injection
+      let parsedUrl;
+      try { parsedUrl = new URL(job.payload.url); } catch { throw new Error('Invalid URL in payload'); }
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('URL must be http or https');
+      if (parsedUrl.pathname.includes('..')) throw new Error('Path traversal detected in URL');
+      const safeUrl = parsedUrl.href.replace(/[;&|`$\\]/g, ''); // strip shell metacharacters
+      
+      const ext = path.extname(parsedUrl.pathname) || '.bin';
       const inputFile = path.join(tmpDir, `input${ext}`);
-      await execWithTimeout(`curl -sL -o "${inputFile}" "${job.payload.url}"`, Math.min(timeoutMs, 120_000));
+      await execWithTimeout(`curl -sL --max-filesize 500000000 -o "${inputFile}" "${safeUrl}"`, Math.min(timeoutMs, 120_000));
       inputFiles.push(inputFile);
     }
     

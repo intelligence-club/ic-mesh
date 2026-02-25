@@ -405,7 +405,12 @@ function claimJob(jobId, nodeId) {
     const node = stmts.getNode.get(nodeId);
     const caps = node ? JSON.parse(node.capabilities || '[]') : [];
     if (!caps.includes(req.capability)) {
-      console.log(`  ⚠ Node ${nodeId.slice(0,8)} rejected claim on ${jobId.slice(0,8)}: missing capability '${req.capability}'`);
+      logger.job('Claim rejected', jobId.slice(0, 8), {
+        nodeId: nodeId.slice(0, 8),
+        reason: 'missing_capability',
+        requiredCapability: req.capability,
+        nodeCapabilities: caps
+      });
       return null;
     }
   }
@@ -721,6 +726,41 @@ const server = http.createServer(async (req, res) => {
     // ---- Job Queue ----
     if (method === 'POST' && pathname === '/jobs') {
       const data = await parseBody(req);
+      
+      // Authentication: require API key or internal origin
+      const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+      const isInternal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+      
+      if (!isInternal && !apiKey) {
+        return json(res, { 
+          error: 'Authentication required',
+          detail: 'Provide an API key via X-Api-Key header or Authorization: Bearer <key>',
+          signup: 'https://moilol.com/account.html'
+        }, 401);
+      }
+      
+      // Validate API key if provided (non-internal)
+      if (apiKey && !isInternal) {
+        // Forward to site server for key validation
+        try {
+          const keyCheck = await new Promise((resolve, reject) => {
+            const kr = http.request({ hostname: '127.0.0.1', port: 443, path: '/api/auth/verify-key', method: 'POST',
+              headers: { 'Content-Type': 'application/json' }, rejectUnauthorized: false
+            }, (kres) => { let d = ''; kres.on('data', c => d += c); kres.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({}); } }); });
+            kr.on('error', () => resolve({}));
+            kr.end(JSON.stringify({ key: apiKey }));
+          });
+          if (!keyCheck.valid) {
+            // Allow through for now during beta, but log
+            logger.api('Unvalidated API key', apiKey.slice(0, 8), {
+              ip: ip,
+              status: 'unvalidated_but_allowed',
+              phase: 'beta'
+            });
+          }
+        } catch {}
+      }
+      
       // Validate job type
       const VALID_JOB_TYPES = ['transcribe', 'generate-image', 'ffmpeg', 'inference', 'ocr', 'pdf-extract'];
       if (!data.type || !VALID_JOB_TYPES.includes(data.type)) {
@@ -733,6 +773,20 @@ const server = http.createServer(async (req, res) => {
           example: { type: 'transcribe', payload: { audio_url: 'https://example.com/audio.wav', language: 'en' } }
         }, 400);
       }
+      
+      // Sanitize payload — strip dangerous characters from string values
+      const sanitizeObj = (obj) => {
+        if (typeof obj === 'string') return obj.replace(/<script/gi, '&lt;script').replace(/javascript:/gi, '');
+        if (Array.isArray(obj)) return obj.map(sanitizeObj);
+        if (obj && typeof obj === 'object') {
+          const clean = {};
+          for (const [k, v] of Object.entries(obj)) clean[k] = sanitizeObj(v);
+          return clean;
+        }
+        return obj;
+      };
+      data.payload = sanitizeObj(data.payload);
+      
       const job = submitJob(data);
       return json(res, { ok: true, job });
     }
@@ -873,10 +927,19 @@ const server = http.createServer(async (req, res) => {
       try {
         const result = await connect.createConnectedAccount(nodeId, email, country || 'US');
         db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?').run(result.stripe_account_id, email, nodeId);
-        console.log(`◉ STRIPE CONNECT: ${node.name} (${nodeId.slice(0,8)}) → ${result.stripe_account_id}`);
+        logger.node('Stripe Connect success', nodeId.slice(0, 8), {
+          nodeName: node.name,
+          stripeAccountId: result.stripe_account_id,
+          email: email,
+          country: country || 'US'
+        });
         return json(res, { ok: true, ...result });
       } catch (e) {
-        console.log(`⚠ Stripe Connect error: ${e.message}`);
+        logger.api('Stripe Connect error', nodeId.slice(0, 8), {
+          error: e.message,
+          email: email,
+          country: country || 'US'
+        });
         return json(res, { error: 'Stripe onboarding failed: ' + e.message }, 500);
       }
     }
