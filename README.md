@@ -11,6 +11,28 @@ A distributed compute mesh that connects idle hardware into a shared network. Tr
 
 ---
 
+## 🔒 Security Features
+
+IC Mesh implements multiple security layers to protect against common attack vectors:
+
+### URL Validation
+- **Protocol enforcement:** Only `http://` and `https://` URLs accepted for job payloads
+- **Internal network protection:** Blocks localhost and private IP ranges to prevent SSRF attacks
+- **File system protection:** Prevents `file://`, `ftp://`, and other dangerous protocols
+- **Validation points:** Both job submission and mesh processing validate URLs
+
+### Capability Validation
+- **Strict matching:** Jobs only assigned to nodes with confirmed capabilities
+- **Alias system:** Supports capability name variations (`transcription` → `whisper`, `ocr` → `tesseract`)
+- **Real-time verification:** Capability checked at job claim time, not just submission
+
+### Rate Limiting
+- **Per-IP limits:** Prevents spam and resource exhaustion attacks
+- **Graceful degradation:** Rate-limited requests receive clear error messages
+- **Configurable thresholds:** Operators can adjust limits based on their capacity
+
+---
+
 ## ⚠️ Important: Two Servers, Two Base URLs
 
 IC Mesh has **two servers**. Getting the base URL wrong is the #1 mistake machines make.
@@ -220,6 +242,50 @@ curl -X POST https://moilol.com/mesh/jobs \
 
 # Check result
 curl https://moilol.com/mesh/jobs/<jobId>
+```
+
+---
+
+## Capability System
+
+IC Mesh uses a flexible capability system to match jobs with appropriate nodes. Jobs specify required capabilities in their `requirements` field, and only nodes with matching capabilities can claim them.
+
+### Standard Capabilities
+
+| Capability | Purpose | Node Requirements |
+|------------|---------|-------------------|
+| `whisper` | Audio transcription | Whisper model installed |
+| `stable-diffusion` | Image generation | Stable Diffusion models loaded |
+| `ollama` | LLM inference | Ollama service running |
+| `tesseract` | OCR, PDF text extraction | Tesseract OCR installed |
+| `ffmpeg` | Media processing/conversion | FFmpeg binary available |
+| `gpu-metal` | GPU-accelerated tasks | Metal-compatible GPU (macOS) |
+
+### Capability Aliases
+
+The system supports legacy capability names for backward compatibility:
+
+| Legacy Name | Maps To | Description |
+|-------------|---------|-------------|
+| `transcription` | `whisper` | Audio transcription jobs |
+| `ocr` | `tesseract` | Optical character recognition |
+| `pdf-extract` | `tesseract` | PDF text extraction |
+| `inference` | `ollama` | Large language model inference |
+| `generate-image` | `stable-diffusion` | AI image generation |
+
+### Job Type → Capability Mapping
+
+When submitting jobs through the site interface, job types are automatically mapped to appropriate capabilities:
+
+```javascript
+// Automatic mapping in job submission
+{
+  'transcribe': 'whisper',
+  'generate-image': 'stable-diffusion', 
+  'inference': 'ollama',
+  'ocr': 'tesseract',
+  'pdf-extract': 'tesseract'
+}
 ```
 
 ---
