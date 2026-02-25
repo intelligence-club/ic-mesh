@@ -31,14 +31,10 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const storage = require('./lib/storage');
 const connect = require('./lib/stripe-connect');
-const EnhancedRateLimiter = require('./lib/enhanced-rate-limit');
+const RateLimiter = require('./lib/rate-limit');
 const logger = require('./lib/logger');
 
-const rateLimiter = new EnhancedRateLimiter({
-  whitelistFile: './config/rate-limit-whitelist.json',
-  logFile: './logs/rate-limits.log',
-  enableLogging: true
-});
+const rateLimiter = new RateLimiter();
 
 // ===== ERROR HANDLING UTILITIES =====
 function logError(context, error, details = {}) {

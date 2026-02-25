@@ -1,0 +1,14 @@
+{
+  "limits": {
+    "upload": 10,
+    "jobs-post": 30,
+    "nodes-register": 20,
+    "health": 120,
+    "status": 60,
+    "default": 60
+  },
+  "windowMs": 60000,
+  "enableLogging": true,
+  "whitelistFile": "./config/rate-limit-whitelist.json",
+  "logFile": "./logs/rate-limits.log"
+}
