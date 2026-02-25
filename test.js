@@ -680,6 +680,24 @@ suite.test('OCR handler availability check', async () => {
   suite.assertEqual(res.data.job.type, 'ocr', 'Job type should be OCR');
 });
 
+suite.test('PDF extraction handler availability check', async () => {
+  // Test PDF extraction job creation to ensure handler is recognized
+  const pdfJob = {
+    type: 'pdf-extract',
+    payload: {
+      method: 'auto',
+      format: 'json',
+      extract_tables: true
+    },
+    requirements: { capability: 'pdf-extract' }
+  };
+  
+  const res = await suite.request('POST', '/jobs', pdfJob);
+  suite.assertEqual(res.status, 200, 'Should accept PDF extraction job creation');
+  suite.assert(res.data.job, 'Should return job object');
+  suite.assertEqual(res.data.job.type, 'pdf-extract', 'Job type should be pdf-extract');
+});
+
 // Run tests if this file is executed directly
 if (require.main === module) {
   suite.run();

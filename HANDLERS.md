@@ -470,8 +470,55 @@ That's it. Your handler is now a service on the mesh.
 | `inference` | `handlers/inference.js` | Ollama LLM inference |
 | `ffmpeg` | `handlers/ffmpeg.sh` | Generic ffmpeg processing |
 | `ocr` | `handlers/ocr.py` | Optical Character Recognition via Tesseract |
+| `pdf-extract` | `handlers/pdf-extract.py` | PDF text extraction with table support |
 
 These ship as examples. Operators can modify, disable, or replace them.
+
+### Configuration Examples
+
+**PDF Text Extraction:**
+```json
+{
+  "handlers": {
+    "pdf-extract": {
+      "command": "python3 handlers/pdf-extract.py",
+      "description": "Extract text, tables, and metadata from PDF documents",
+      "accepts": {
+        "mimeTypes": ["application/pdf"],
+        "maxInputSizeMB": 50
+      },
+      "resources": {
+        "timeout": 300,
+        "maxConcurrent": 2,
+        "cpuWeight": "medium"
+      }
+    }
+  }
+}
+```
+
+**OCR with Custom Configuration:**
+```json
+{
+  "handlers": {
+    "ocr": {
+      "command": "python3 handlers/ocr.py",
+      "description": "OCR text extraction with multi-language support",
+      "accepts": {
+        "mimeTypes": ["image/*", "application/pdf"],
+        "maxInputSizeMB": 25
+      },
+      "resources": {
+        "timeout": 120,
+        "maxConcurrent": 3
+      },
+      "env": {
+        "TESSERACT_LANG": "eng+fra+deu"
+      }
+    }
+  }
+}
+```
 
 ---
 
