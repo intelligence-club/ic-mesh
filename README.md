@@ -127,6 +127,28 @@ Revenue split:
 - [ ] Hub federation (multi-hub mesh)
 - [ ] Advanced job scheduling
 
+## Testing
+
+Run the test suite to verify API functionality:
+
+```bash
+# Start server and run tests
+npm run test:ci
+
+# Or manually:
+node server.js &
+npm test
+```
+
+The test suite covers:
+- ✅ Network status endpoint
+- ✅ Node registration & listing  
+- ✅ Job creation & retrieval
+- ✅ WebSocket connectivity
+- ✅ Error handling (404s, etc.)
+
+Tests run automatically on GitHub Actions for Node.js 18, 20, and 22.
+
 ## Links
 
 - 🌐 [moilol.com/network.html](https://moilol.com/network.html) — Product page

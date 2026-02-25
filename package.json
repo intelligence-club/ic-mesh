@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "client": "node client.js"
+    "client": "node client.js",
+    "test": "node test.js",
+    "test:ci": "timeout 30s node server.js & SERVER_PID=$!; sleep 2; node test.js; kill $SERVER_PID"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
