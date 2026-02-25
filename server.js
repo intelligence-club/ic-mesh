@@ -409,6 +409,16 @@ function aliasCapability(capability) {
 function getAvailableJobs(nodeId) {
   const pending = stmts.getPendingJobs.all();
   const node = stmts.getNode.get(nodeId);
+  
+  // Check if node is quarantined
+  if (node) {
+    const flags = JSON.parse(node.flags || '{}');
+    if (flags.quarantined) {
+      // Return empty array for quarantined nodes
+      return [];
+    }
+  }
+  
   const nodeCaps = node ? JSON.parse(node.capabilities || '[]') : [];
   const nodeModels = node ? JSON.parse(node.models || '[]') : [];
   
@@ -428,9 +438,23 @@ function claimJob(jobId, nodeId) {
   // Verify node has required capabilities before allowing claim
   const job = stmts.getJob.get(jobId);
   if (!job || job.status !== 'pending') return null;
+  
+  // Check if node is quarantined
+  const node = stmts.getNode.get(nodeId);
+  if (node) {
+    const flags = JSON.parse(node.flags || '{}');
+    if (flags.quarantined) {
+      logger.jobEvent(jobId.slice(0, 8), 'claim rejected', {
+        nodeId: nodeId.slice(0, 8),
+        reason: 'node_quarantined',
+        quarantinedAt: flags.quarantinedAt
+      });
+      return null;
+    }
+  }
+  
   const req = JSON.parse(job.requirements || '{}');
   if (req.capability) {
-    const node = stmts.getNode.get(nodeId);
     const caps = node ? JSON.parse(node.capabilities || '[]') : [];
     const requiredCap = aliasCapability(req.capability);
     if (!caps.includes(requiredCap)) {
