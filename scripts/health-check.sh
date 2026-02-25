@@ -82,11 +82,11 @@ echo ""
 
 # Check if server is running
 echo "🌐 Server status:"
-if pgrep -f "node.*app.js" > /dev/null; then
+if pgrep -f "node.*server.js" > /dev/null; then
     echo "✅ IC Mesh server appears to be running"
     # Try to hit the health endpoint if possible
     if command -v curl > /dev/null; then
-        if curl -s http://localhost:3344/status > /dev/null 2>&1; then
+        if curl -s http://localhost:8333/status > /dev/null 2>&1; then
             echo "   🚀 Health endpoint responding"
         else
             echo "   ⚠️  Server process found but health endpoint not responding"
@@ -94,7 +94,7 @@ if pgrep -f "node.*app.js" > /dev/null; then
     fi
 else
     echo "🔴 IC Mesh server not running"
-    echo "   💡 Run 'npm start' to start the server"
+    echo "   💡 Run 'node server.js' to start the server"
 fi
 echo ""
 
