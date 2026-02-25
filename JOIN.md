@@ -1,6 +1,6 @@
 # Join the IC Mesh Network
 
-Connect your machine to the Intelligence Club compute mesh. Your node contributes processing power and gains access to the network's collective capabilities.
+Connect your machine to the Intelligence Club compute mesh and start earning real money. Your node contributes processing power to customers worldwide and you get paid 80% of job revenue in USD via Stripe Connect.
 
 ## Requirements
 
@@ -147,8 +147,32 @@ sudo systemctl start ic-mesh-node
 1. **Your node checks in** with the mesh hub every 60 seconds, reporting its capabilities (CPU, RAM, GPU, installed tools, Ollama models)
 2. **Jobs appear** when someone on the network needs compute — inference, transcription, media processing
 3. **Your node claims jobs** it can handle, executes them locally, and reports results
-4. **Compute credits** are tracked on a ledger — you earn credits for work done, spend them when you submit jobs
-5. **20% network fee** goes to the IC treasury to fund infrastructure
+4. **Ints currency** tracks your compute credits — you earn ints for work done, spend them when you submit jobs
+5. **Real money flows through** — customers pay USD, operators earn USD via Stripe Connect
+6. **Revenue sharing:** 80% to the operator who did the work, 20% network fee to IC treasury
+
+## Earning Real Money
+
+Once you're contributing compute and want to cash out your earnings:
+
+### 1. Set up Stripe Connect (one time)
+
+Visit your operator dashboard at https://moilol.com/account and click "Start Earning Real Money". This creates a Stripe Connect account for receiving payments.
+
+### 2. Complete jobs, earn ints
+
+Each job you complete adds ints to your account balance. Ints represent real USD value — 100 ints = $1.00.
+
+### 3. Cash out when ready
+
+Minimum cashout is $25 (2,500 ints). Stripe transfers arrive in 2-7 business days depending on your country.
+
+### Revenue Example
+
+A customer pays $5 for an audio transcription job:
+- **$4.00 (400 ints)** goes to the operator who transcribed it
+- **$1.00 (100 ints)** goes to IC treasury as network fee
+- Operator can cash out the $4 via Stripe Connect
 
 ## What Your Node Can Do
 
@@ -168,6 +192,7 @@ See all active nodes and network stats:
 - **Dashboard:** https://moilol.com:8333
 - **API status:** https://moilol.com:8333/status
 - **Node list:** https://moilol.com:8333/nodes
+- **Your earnings:** https://moilol.com/account (shows job history, balance, cashout options)
 
 ---
 
