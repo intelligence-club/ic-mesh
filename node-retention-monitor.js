@@ -6,7 +6,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 
-const db = new Database('mesh.db', { verbose: console.log });
+const db = new Database('data/mesh.db', { verbose: console.log });
 
 function analyzeNodeRetention() {
     console.log('📊 Node Retention Analysis');
@@ -19,9 +19,9 @@ function analyzeNodeRetention() {
             ip as ipAddress,
             capabilities,
             registeredAt,
-            lastHeartbeat,
+            lastSeen,
             CASE 
-                WHEN lastHeartbeat > (unixepoch() * 1000 - 300000) THEN 'active'
+                WHEN lastSeen > (unixepoch() * 1000 - 300000) THEN 'active'
                 ELSE 'offline'
             END as status
         FROM nodes 
@@ -46,9 +46,11 @@ function analyzeNodeRetention() {
     const recentNodes = nodes.slice(0, 10);
     
     recentNodes.forEach(node => {
-        const created = new Date(node.createdAt);
-        const lastSeen = new Date(node.lastSeen);
-        const sessionMinutes = Math.round((lastSeen - created) / 1000 / 60);
+        if (!node.nodeId) return; // Skip if no nodeId
+        
+        const created = new Date(node.registeredAt);
+        const lastSeenDate = new Date(node.lastSeen || node.registeredAt);
+        const sessionMinutes = Math.round((lastSeenDate - created) / 1000 / 60);
         
         console.log(`  ${node.nodeId.substring(0, 8)}: ${sessionMinutes}m session (${node.status})`);
     });
@@ -60,10 +62,13 @@ function analyzeNodeRetention() {
             j.claimedBy,
             j.status,
             j.claimedAt,
-            n.status as nodeStatus
+            CASE 
+                WHEN n.lastSeen > (unixepoch() * 1000 - 300000) THEN 'active'
+                ELSE 'offline'
+            END as nodeStatus
         FROM jobs j
         LEFT JOIN nodes n ON j.claimedBy = n.nodeId
-        WHERE j.status = 'claimed' AND (n.status != 'active' OR n.status IS NULL)
+        WHERE j.status = 'claimed' AND (n.lastSeen <= (unixepoch() * 1000 - 300000) OR n.lastSeen IS NULL)
     `).all();
 
     if (abandonedJobs.length > 0) {
