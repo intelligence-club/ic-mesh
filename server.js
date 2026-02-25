@@ -79,7 +79,10 @@ db.exec(`
     completedAt INTEGER,
     result TEXT,
     computeMs INTEGER DEFAULT 0,
-    creditAmount REAL DEFAULT 0
+    creditAmount REAL DEFAULT 0,
+    refunded INTEGER DEFAULT 0,
+    ints_cost INTEGER DEFAULT 0,
+    error_message TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
   CREATE INDEX IF NOT EXISTS idx_jobs_claimedBy ON jobs(claimedBy);
@@ -108,6 +111,33 @@ db.exec(`
     status TEXT DEFAULT 'pending',
     created TEXT DEFAULT (datetime('now')),
     processed TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS tickets (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    api_key TEXT,
+    category TEXT,
+    priority TEXT DEFAULT 'normal',
+    subject TEXT,
+    body TEXT,
+    job_id TEXT,
+    status TEXT DEFAULT 'open',
+    auto_resolved INTEGER DEFAULT 0,
+    resolution TEXT,
+    actions_taken TEXT,
+    created TEXT DEFAULT (datetime('now')),
+    updated TEXT DEFAULT (datetime('now')),
+    resolved_at TEXT,
+    escalated_to TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS ticket_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id TEXT NOT NULL,
+    sender TEXT,
+    body TEXT,
+    created TEXT DEFAULT (datetime('now'))
   );
 `);
 
@@ -153,6 +183,10 @@ const stmts = {
   updateNodeStats: db.prepare('UPDATE nodes SET jobsCompleted = jobsCompleted + 1, computeMinutes = computeMinutes + ? WHERE nodeId = ?'),
   findNodeByNameOwner: db.prepare('SELECT nodeId FROM nodes WHERE name = ? AND owner = ?'),
   getClaimedStale: db.prepare("SELECT * FROM jobs WHERE status = 'claimed' AND claimedAt < ?"),
+  
+  // Ticket system
+  getTicket: db.prepare('SELECT * FROM tickets WHERE id = ?'),
+  markJobRefunded: db.prepare("UPDATE jobs SET refunded = 1 WHERE jobId = ?")
 };
 
 function migrateFromJSON() {
@@ -835,6 +869,78 @@ const server = http.createServer(async (req, res) => {
         },
         websocket: { connected: wsClients.size },
         uptime: process.uptime()
+      });
+    }
+    
+    // ---- Support Ticket System ----
+    if (method === 'POST' && pathname === '/api/support') {
+      const data = await parseBody(req);
+      const { email, api_key, category, subject, body, job_id, priority } = data;
+      
+      if (!email || !subject || !body) {
+        return json(res, { error: 'email, subject, and body required' }, 400);
+      }
+      
+      // Generate ticket ID
+      const ticketNum = db.prepare('SELECT COUNT(*) as count FROM tickets').get().count + 1;
+      const ticket_id = `IC-${ticketNum.toString().padStart(5, '0')}`;
+      
+      // Auto-resolve logic
+      let auto_resolved = false;
+      let resolution = null;
+      let actions_taken = [];
+      let refund_ints = 0;
+      
+      // Check for job-related issues
+      if (job_id) {
+        const job = stmts.getJob.get(job_id);
+        if (job && job.status === 'failed' && !job.refunded) {
+          // Auto-refund failed jobs
+          const ints = parseInt(job.ints_cost || 0);
+          if (ints > 0) {
+            stmts.addInts.run(email, ints, 'auto_refund', `Failed job ${job_id} - support ticket ${ticket_id}`);
+            stmts.markJobRefunded.run(job_id);
+            actions_taken.push({ action: 'refund', amount_ints: ints, job_id: job_id });
+            refund_ints = ints;
+            auto_resolved = true;
+            resolution = `Auto-refunded ${ints} ints for failed job ${job_id}. The job failed due to: ${job.error_message || 'timeout'}. You can retry the job or contact support if this keeps happening.`;
+          }
+        }
+      }
+      
+      // Store ticket
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT OR REPLACE INTO tickets 
+        (id, email, api_key, category, priority, subject, body, job_id, status, auto_resolved, resolution, actions_taken, created, updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        ticket_id, email, api_key, category || 'other', priority || 'normal', 
+        subject, body, job_id, auto_resolved ? 'auto_resolved' : 'open',
+        auto_resolved ? 1 : 0, resolution, JSON.stringify(actions_taken), now, now
+      );
+      
+      // Add initial message
+      db.prepare(`
+        INSERT INTO ticket_messages (ticket_id, sender, body, created)
+        VALUES (?, ?, ?, ?)
+      `).run(ticket_id, 'customer', body, now);
+      
+      if (auto_resolved && resolution) {
+        db.prepare(`
+          INSERT INTO ticket_messages (ticket_id, sender, body, created)
+          VALUES (?, ?, ?, ?)
+        `).run(ticket_id, 'agent', resolution, now);
+      }
+      
+      console.log(`Support ticket ${ticket_id} created for ${email} - ${auto_resolved ? 'auto-resolved' : 'needs review'}`);
+      
+      return json(res, {
+        ticket_id,
+        status: auto_resolved ? 'auto_resolved' : 'open',
+        message: resolution || 'Thank you for contacting support. We\'ve received your ticket and will respond within 24 hours.',
+        auto_resolved,
+        refund_ints
       });
     }
     
