@@ -258,7 +258,10 @@ function migrateFromJSON() {
           lastSeen: n.lastSeen || Date.now(), registeredAt: n.registeredAt || Date.now()
         });
       }
-      console.log(`  Migrated ${Object.keys(nodes).length} nodes from JSON`);
+      logger.system('JSON migration', 'nodes', {
+        count: Object.keys(nodes).length,
+        source: 'nodes.json'
+      });
     }
     
     if (fs.existsSync(jobsFile)) {
@@ -284,7 +287,10 @@ function migrateFromJSON() {
           }
         }
       }
-      console.log(`  Migrated ${Object.keys(jobs).length} jobs from JSON`);
+      logger.system('JSON migration', 'jobs', {
+        count: Object.keys(jobs).length,
+        source: 'jobs.json'
+      });
     }
     
     if (fs.existsSync(ledgerFile)) {
@@ -292,10 +298,16 @@ function migrateFromJSON() {
       for (const [id, l] of Object.entries(ledger)) {
         stmts.upsertLedger.run(id, l.earned || 0, l.spent || 0, l.jobs || 0, 0, 0, 0);
       }
-      console.log(`  Migrated ${Object.keys(ledger).length} ledger entries from JSON`);
+      logger.system('JSON migration', 'ledger', {
+        count: Object.keys(ledger).length,
+        source: 'ledger.json'
+      });
     }
   } catch(e) {
-    console.log('  JSON migration skipped:', e.message);
+    logger.system('JSON migration skipped', 'migration', {
+      error: e.message,
+      reason: 'migration_error'
+    });
   }
 }
 
@@ -958,7 +970,12 @@ const server = http.createServer(async (req, res) => {
       if (source.owner !== target.owner) return json(res, { error: 'Nodes must have the same owner' }, 403);
       db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?')
         .run(source.stripe_account_id, source.payout_email || '', nodeId);
-      console.log(`◉ STRIPE LINK: ${target.name} (${nodeId.slice(0,8)}) → ${source.stripe_account_id} (from ${source.name})`);
+      logger.node('Stripe account linked', nodeId.slice(0, 8), {
+        targetNode: target.name,
+        sourceNode: source.name,
+        sourceNodeId: sourceNodeId.slice(0, 8),
+        stripeAccountId: source.stripe_account_id
+      });
       return json(res, { ok: true, nodeId, linked_from: sourceNodeId, stripe_account_id: source.stripe_account_id });
     }
 
@@ -1007,7 +1024,12 @@ const server = http.createServer(async (req, res) => {
           const status = await connect.checkAccountStatus(node.stripe_account_id);
           if (status.payouts_enabled) {
             transferResult = await connect.transferToNode(node.stripe_account_id, requestedInts, nodeId);
-            console.log(`◉ STRIPE TRANSFER: ${nodeId.slice(0,8)} → ${requestedInts} ints ($${amountUsd}) → ${transferResult.transfer_id}`);
+            logger.node('Stripe transfer completed', nodeId.slice(0, 8), {
+              amount: requestedInts,
+              amountUsd: amountUsd,
+              transferId: transferResult.transfer_id,
+              stripeAccountId: node.stripe_account_id
+            });
           }
         } catch (e) {
           console.log(`⚠ Stripe transfer failed: ${e.message}`);
