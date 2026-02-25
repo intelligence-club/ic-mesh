@@ -21,7 +21,9 @@
     "diagnostics": "node scripts/node-diagnostics.js",
     "diagnostics:full": "node scripts/node-diagnostics.js --full",
     "diagnostics:capabilities": "node scripts/node-diagnostics.js --capabilities",
-    "diagnostics:earnings": "node scripts/node-diagnostics.js --earnings"
+    "diagnostics:earnings": "node scripts/node-diagnostics.js --earnings",
+    "visualizer": "node scripts/network-visualizer.js",
+    "viz": "node scripts/network-visualizer.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
