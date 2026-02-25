@@ -213,7 +213,7 @@ function getCapabilities() {
       caps.push('gpu-metal');
   } catch {}
 
-  if (httpOk('http://localhost:7860/sdapi/v1/sd-models')) caps.push('stable-diffusion');
+  if (httpOk('http://localhost:7860/sdapi/v1/sd-models') || httpOk('http://localhost:7861/sdapi/v1/sd-models')) caps.push('stable-diffusion');
   if (httpOk('http://localhost:8188/system_stats')) caps.push('comfyui');
 
   // Add capabilities from enabled handlers

@@ -85,8 +85,8 @@ curl -X POST http://localhost:8333/register \
 # Check API key format
 curl -H "Authorization: Bearer your-api-key-here" http://localhost:8333/jobs/submit
 
-# Generate new API key
-curl -X POST http://localhost:8333/api/keys -H "Content-Type: application/json" -d '{"name":"test-key"}'
+# Generate new API key (requires authentication)
+curl -X POST https://moilol.com/api/auth/keys -H "Content-Type: application/json" -H "Cookie: session=your-session"
 ```
 
 #### 404 Not Found
