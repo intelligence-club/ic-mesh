@@ -32,13 +32,14 @@ const { WebSocketServer, WebSocket } = require('ws');
 const storage = require('./lib/storage');
 const connect = require('./lib/stripe-connect');
 const RateLimiter = require('./lib/rate-limit');
+const logger = require('./lib/logger');
 
 const rateLimiter = new RateLimiter();
 
 // ===== ERROR HANDLING UTILITIES =====
 function logError(context, error, details = {}) {
-  console.error(`[ERROR] ${context}:`, {
-    message: error.message,
+  logger.error(context, error.message, {
+    error: error.name,
     stack: error.stack?.split('\n').slice(0, 3).join('\n'),
     ...details
   });
@@ -446,7 +447,14 @@ function completeJob(jobId, nodeId, result) {
     stmts.upsertPayout.run(nodeId, nodeCut, 1);
     stmts.upsertPayout.run('ic-treasury', treasuryCut, 0);
     stmts.upsertPayout.run('ic-infra', infraCut, 0);
-    console.log(`  💰 SPLIT: ${priceInts} ints → node ${nodeCut} / treasury ${treasuryCut} / infra ${infraCut}`);
+    logger.job('Payment split', jobId.slice(0, 8), {
+      totalInts: priceInts,
+      nodeCut,
+      treasuryCut,
+      infraCut,
+      nodeId: nodeId.slice(0, 8),
+      type: 'payment_split'
+    });
   }
   
   const completed = jobToJSON(stmts.getJob.get(jobId));
@@ -468,7 +476,10 @@ function setupWebSocket(server) {
     const nodeId = url.searchParams.get('nodeId') || 'unknown';
     
     wsClients.set(nodeId, ws);
-    console.log(`  ⚡ WS connected: ${nodeId} (${wsClients.size} total)`);
+    logger.node('WebSocket connected', nodeId, {
+      totalConnections: wsClients.size,
+      type: 'ws_connect'
+    });
     
     ws.on('message', (data) => {
       try {
@@ -481,7 +492,10 @@ function setupWebSocket(server) {
     
     ws.on('close', () => {
       wsClients.delete(nodeId);
-      console.log(`  ⚡ WS disconnected: ${nodeId} (${wsClients.size} total)`);
+      logger.node('WebSocket disconnected', nodeId, {
+        totalConnections: wsClients.size,
+        type: 'ws_disconnect'
+      });
     });
     
     ws.on('error', (error) => {
@@ -642,7 +656,11 @@ const server = http.createServer(async (req, res) => {
             if (headerEnd > 4 && footerStart > headerEnd) {
               const fileData = body.slice(headerEnd, footerStart);
               const result = await storage.uploadFile(fileData, origFilename);
-              console.log(`  ↑ Upload: ${result.filename} (${(result.size / 1024 / 1024).toFixed(1)}MB) [${result.storage}]`);
+              logger.api('File uploaded', result.filename, {
+                sizeMB: (result.size / 1024 / 1024).toFixed(1),
+                storage: result.storage,
+                type: 'file_upload'
+              });
               return json(res, { ok: true, url: result.url, filename: result.filename, size: result.size, storage: result.storage });
             }
           }
