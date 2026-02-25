@@ -1,0 +1,33 @@
+version: '3.8'
+services:
+  ic-mesh:
+    build: .
+    ports:
+      - "8333:8333"
+    environment:
+      - NODE_ENV=production
+      - PORT=8333
+      - DATA_DIR=/app/data
+      - DATABASE_PATH=/app/data/mesh.db
+      - ADMIN_KEY=${ADMIN_KEY:-ic-admin-2026}
+      # Stripe Connect (optional)
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      # DO Spaces (optional)
+      - DO_SPACES_KEY=${DO_SPACES_KEY}
+      - DO_SPACES_SECRET=${DO_SPACES_SECRET}
+      - DO_SPACES_REGION=${DO_SPACES_REGION:-nyc3}
+      - DO_SPACES_BUCKET=${DO_SPACES_BUCKET:-ic-mesh}
+    volumes:
+      - mesh-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8333/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  mesh-data:
+    driver: local

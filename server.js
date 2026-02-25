@@ -32,10 +32,10 @@ const { WebSocketServer, WebSocket } = require('ws');
 const storage = require('./lib/storage');
 const connect = require('./lib/stripe-connect');
 
-const PORT = 8333;
-const DATA_DIR = path.join(__dirname, 'data');
+const PORT = process.env.PORT || 8333;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
-const DB_PATH = path.join(DATA_DIR, 'mesh.db');
+const DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, 'mesh.db');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
