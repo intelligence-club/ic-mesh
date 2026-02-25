@@ -4,6 +4,7 @@
   "nodeOwner": null,
   "nodeRegion": "unknown",
   "sdUrl": "http://localhost:7860",
+  "useWebSocket": true,
   "checkinInterval": 60000,
   "jobPollInterval": 10000,
   "updateCheckInterval": 300000,

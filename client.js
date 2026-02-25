@@ -24,6 +24,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
+const WebSocket = require('ws');
 
 // ===== Configuration =====
 
@@ -34,6 +35,7 @@ let config = {
   nodeOwner: null,
   nodeRegion: 'unknown',
   sdUrl: 'http://localhost:7860',
+  useWebSocket: true,
   checkinInterval: 60_000,
   jobPollInterval: 10_000,
   updateCheckInterval: 300_000,
@@ -73,6 +75,8 @@ const JOB_TIMEOUTS = config.jobTimeouts;
 let nodeId = loadNodeId();
 let currentJob = null;
 let activeChildProcess = null;
+let wsConnection = null;
+let isConnecting = false;
 let shuttingDown = false;
 let jobRunning = false;
 
@@ -362,6 +366,77 @@ async function runTranscribe(payload, timeoutMs) {
   }
 }
 
+// ===== WebSocket Connection =====
+
+function connectWebSocket() {
+  if (isConnecting || (wsConnection && wsConnection.readyState === WebSocket.OPEN)) return;
+  
+  isConnecting = true;
+  const wsUrl = MESH_SERVER.replace('http://', 'ws://').replace('https://', 'wss://') + `/ws?nodeId=${nodeId}`;
+  
+  console.log(`◉ Connecting via WebSocket: ${wsUrl}`);
+  wsConnection = new WebSocket(wsUrl);
+  
+  wsConnection.on('open', () => {
+    isConnecting = false;
+    console.log(`◉ WebSocket connected — job polling disabled`);
+  });
+  
+  wsConnection.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      handleWebSocketMessage(msg);
+    } catch (err) {
+      console.error(`✗ WS message parse error: ${err.message}`);
+    }
+  });
+  
+  wsConnection.on('close', (code, reason) => {
+    isConnecting = false;
+    console.log(`◉ WebSocket disconnected: ${code} ${reason}`);
+    console.log(`  Falling back to HTTP polling...`);
+    // Reconnect after 5 seconds
+    setTimeout(connectWebSocket, 5000);
+  });
+  
+  wsConnection.on('error', (err) => {
+    isConnecting = false;
+    console.error(`✗ WebSocket error: ${err.message}`);
+  });
+}
+
+function handleWebSocketMessage(msg) {
+  switch (msg.type) {
+    case 'job.dispatch':
+      if (msg.job && canTakeJob(msg.job)) {
+        claimJob(msg.job.jobId);
+      }
+      break;
+    case 'jobs.available':
+      if (msg.jobs && msg.jobs.length > 0) {
+        const job = msg.jobs.find(canTakeJob);
+        if (job) claimJob(job.jobId);
+      }
+      break;
+    default:
+      console.log(`◉ WS message: ${msg.type}`);
+  }
+}
+
+function canTakeJob(job) {
+  if (currentJob) return false;
+  if (!job.requirements) return true;
+  
+  const reqs = typeof job.requirements === 'string' ? JSON.parse(job.requirements) : job.requirements;
+  const caps = getCapabilities();
+  
+  if (reqs.capabilities) {
+    return reqs.capabilities.every(cap => caps.includes(cap));
+  }
+  
+  return true;
+}
+
 // ===== Auto-Update =====
 
 async function checkForUpdates() {
@@ -461,7 +536,18 @@ function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`\n◉ ${signal} — shutting down...`);
-  if (activeChildProcess) { try { process.kill(-activeChildProcess.pid, 'SIGKILL'); } catch { try { activeChildProcess.kill('SIGKILL'); } catch {} } }
+  
+  // Clean up WebSocket connection
+  if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+    wsConnection.close();
+  }
+  
+  // Clean up active job process
+  if (activeChildProcess) { 
+    try { process.kill(-activeChildProcess.pid, 'SIGKILL'); } 
+    catch { try { activeChildProcess.kill('SIGKILL'); } catch {} } 
+  }
+  
   setTimeout(() => process.exit(0), 1000);
 }
 
@@ -487,11 +573,20 @@ async function main() {
 
   await checkin();
   setInterval(checkin, CHECKIN_INTERVAL);
-  setInterval(pollJobs, JOB_POLL_INTERVAL);
+  
+  if (config.useWebSocket) {
+    console.log(`◉ WebSocket mode enabled`);
+    connectWebSocket();
+  } else {
+    console.log(`◉ HTTP polling mode`);
+    setInterval(pollJobs, JOB_POLL_INTERVAL);
+  }
+  
   setTimeout(checkForUpdates, 30_000);
   setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL);
 
-  console.log(`◉ Running. Checkin ${CHECKIN_INTERVAL/1000}s | Poll ${JOB_POLL_INTERVAL/1000}s | Updates ${UPDATE_CHECK_INTERVAL/1000}s`);
+  const mode = config.useWebSocket ? 'WebSocket' : `Poll ${JOB_POLL_INTERVAL/1000}s`;
+  console.log(`◉ Running. Checkin ${CHECKIN_INTERVAL/1000}s | Jobs: ${mode} | Updates ${UPDATE_CHECK_INTERVAL/1000}s`);
   console.log('  Ctrl+C to leave.\n');
 }
 
