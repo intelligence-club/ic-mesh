@@ -103,7 +103,8 @@ db.exec(`
     creditAmount REAL DEFAULT 0,
     refunded INTEGER DEFAULT 0,
     ints_cost INTEGER DEFAULT 0,
-    error_message TEXT
+    error_message TEXT,
+    progress TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
   CREATE INDEX IF NOT EXISTS idx_jobs_claimedBy ON jobs(claimedBy);
@@ -167,6 +168,9 @@ db.exec(`
     last_updated TEXT DEFAULT (datetime('now'))
   );
 `);
+
+// Add progress column if missing (migration)
+try { db.exec('ALTER TABLE jobs ADD COLUMN progress TEXT'); } catch(e) {}
 
 // ===== PREPARED STATEMENTS =====
 const stmts = {
@@ -326,6 +330,7 @@ function jobToJSON(row) {
     createdAt: row.createdAt, claimedAt: row.claimedAt,
     completedAt: row.completedAt,
     result: row.result ? JSON.parse(row.result) : null,
+    progress: row.progress ? JSON.parse(row.progress) : null,
     computeMs: row.computeMs, creditAmount: row.creditAmount
   };
 }
@@ -512,6 +517,8 @@ function handleWsMessage(nodeId, msg, ws) {
       ws.send(JSON.stringify({ type: 'job.complete.result', jobId: msg.jobId, ok: !!completed }));
       break;
     case 'job.progress':
+      // Store progress in DB for HTTP polling
+      try { db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(msg.progress), msg.jobId); } catch(e) {}
       broadcastEvent('job.progress', { jobId: msg.jobId, progress: msg.progress, nodeId });
       break;
   }
@@ -729,6 +736,15 @@ const server = http.createServer(async (req, res) => {
       return json(res, { ok: true, job });
     }
     
+    // Progress update from node (HTTP polling clients)
+    if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/progress$/)) {
+      const jobId = pathname.split('/')[2];
+      const data = await parseBody(req);
+      try { db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(data.progress || data), jobId); } catch(e) {}
+      broadcastEvent('job.progress', { jobId, progress: data.progress || data, nodeId: data.nodeId });
+      return json(res, { ok: true });
+    }
+
     if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/complete$/)) {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);

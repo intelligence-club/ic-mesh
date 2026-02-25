@@ -151,6 +151,7 @@ let isConnecting = false;
 let shuttingDown = false;
 let jobRunning = false;
 let pollInterval = null;
+let currentJobId = null;
 
 // ===== Node ID Persistence =====
 
@@ -463,11 +464,36 @@ async function runGenerate(payload, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  // Poll SD progress and report to mesh server
+  const progressInterval = setInterval(async () => {
+    try {
+      const prog = await fetch(`${SD_URL}/sdapi/v1/progress`, { signal: AbortSignal.timeout(3000) });
+      const p = await prog.json();
+      if (p.progress > 0 && p.progress < 1) {
+        const pct = Math.round(p.progress * 100);
+        const step = p.state?.sampling_step || 0;
+        const steps = p.state?.sampling_steps || params.steps;
+        const eta = p.eta_relative ? Math.round(p.eta_relative) : null;
+        const progressData = { pct, step, steps, eta, stage: 'generating' };
+        console.log(`  ◉ Progress: ${pct}% (step ${step}/${steps}${eta ? ', ~' + eta + 's left' : ''})`);
+        // Report to mesh server
+        try {
+          await fetch(`${MESH_SERVER}/jobs/${currentJobId}/progress`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nodeId, progress: progressData }),
+            signal: AbortSignal.timeout(3000)
+          });
+        } catch {}
+      }
+    } catch {}
+  }, 2000);
+
   try {
     const resp = await fetch(`${SD_URL}/sdapi/v1/txt2img`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params), signal: controller.signal
     });
+    clearInterval(progressInterval);
     if (!resp.ok) throw new Error(`SD API ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
     const data = await resp.json();
     if (!data.images?.length) throw new Error('No images returned');
@@ -491,7 +517,7 @@ async function runGenerate(payload, timeoutMs) {
     return { image_base64: data.images[0], width: params.width, height: params.height, prompt: params.prompt, steps: params.steps, seed: data.parameters?.seed || params.seed, sizeBytes: imgBuffer.length };
   } catch (e) {
     throw e.name === 'AbortError' ? new Error(`SD timeout (${Math.round(timeoutMs/1000)}s)`) : e;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); clearInterval(progressInterval); }
 }
 
 async function runTranscribe(payload, timeoutMs) {
@@ -777,6 +803,7 @@ async function pollJobs() {
 
   console.log(`  ✓ Claimed (timeout: ${Math.round(getJobTimeout(job)/1000)}s)`);
   jobRunning = true;
+  currentJobId = job.jobId;
 
   try {
     const result = await executeJobSafe(job);
