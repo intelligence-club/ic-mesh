@@ -35,13 +35,15 @@ class TestSuite {
         console.log(`❌ ${name}`);
         console.log(`   Error: ${error.message}`);
       }
+      // Brief delay between tests to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     console.log(`\n📊 Results: ${this.passed} passed, ${this.failed} failed`);
     process.exit(this.failed > 0 ? 1 : 0);
   }
 
-  async request(method, path, data = null, headers = {}) {
+  async request(method, path, data = null, headers = {}, retries = 0) {
     return new Promise((resolve, reject) => {
       const url = new URL(path, BASE_URL);
       const options = {
@@ -52,12 +54,25 @@ class TestSuite {
         }
       };
 
-      const req = http.request(url, options, (res) => {
+      const req = http.request(url, options, async (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
-        res.on('end', () => {
+        res.on('end', async () => {
           try {
             const parsed = body ? JSON.parse(body) : null;
+            
+            // Handle rate limiting with retry
+            if (res.statusCode === 429 && parsed && parsed.retry_after && retries < 3) {
+              await new Promise(resolve => setTimeout(resolve, (parsed.retry_after + 0.1) * 1000));
+              try {
+                const retryResult = await this.request(method, path, data, headers, retries + 1);
+                resolve(retryResult);
+              } catch (retryError) {
+                reject(retryError);
+              }
+              return;
+            }
+            
             resolve({ status: res.statusCode, data: parsed, headers: res.headers });
           } catch {
             resolve({ status: res.statusCode, data: body, headers: res.headers });
