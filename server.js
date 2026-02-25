@@ -434,7 +434,7 @@ function claimJob(jobId, nodeId) {
     const caps = node ? JSON.parse(node.capabilities || '[]') : [];
     const requiredCap = aliasCapability(req.capability);
     if (!caps.includes(requiredCap)) {
-      logger.job('Claim rejected', jobId.slice(0, 8), {
+      logger.jobEvent(jobId.slice(0, 8), 'claim rejected', {
         nodeId: nodeId.slice(0, 8),
         reason: 'missing_capability',
         requiredCapability: req.capability,
@@ -482,7 +482,7 @@ function completeJob(jobId, nodeId, result) {
     stmts.upsertPayout.run(nodeId, nodeCut, 1);
     stmts.upsertPayout.run('ic-treasury', treasuryCut, 0);
     stmts.upsertPayout.run('ic-infra', infraCut, 0);
-    logger.job('Payment split', jobId.slice(0, 8), {
+    logger.jobEvent(jobId.slice(0, 8), 'payment split', {
       totalInts: priceInts,
       nodeCut,
       treasuryCut,
