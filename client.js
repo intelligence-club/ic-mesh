@@ -27,23 +27,48 @@ const { execSync, spawn } = require('child_process');
 
 // ===== Configuration =====
 
-const MESH_SERVER = process.env.IC_MESH_SERVER || 'http://localhost:8333';
-const NODE_NAME = process.env.IC_NODE_NAME || os.hostname();
-const NODE_OWNER = process.env.IC_NODE_OWNER || os.userInfo().username;
-const NODE_REGION = process.env.IC_NODE_REGION || 'unknown';
-const CHECKIN_INTERVAL = 60_000;        // 60s
-const JOB_POLL_INTERVAL = 10_000;       // 10s
-const UPDATE_CHECK_INTERVAL = 300_000;  // 5 min
+// Load config from node-config.json if it exists, with env var overrides
+let config = {
+  meshServer: 'http://localhost:8333',
+  nodeName: null,
+  nodeOwner: null,
+  nodeRegion: 'unknown',
+  sdUrl: 'http://localhost:7860',
+  checkinInterval: 60_000,
+  jobPollInterval: 10_000,
+  updateCheckInterval: 300_000,
+  jobTimeouts: {
+    ping: 5_000,
+    inference: 300_000,
+    transcribe: 600_000,
+    generate: 900_000,
+    default: 300_000
+  }
+};
+
+const CONFIG_FILE = path.join(__dirname, 'node-config.json');
+if (fs.existsSync(CONFIG_FILE)) {
+  try {
+    const fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    config = { ...config, ...fileConfig };
+    console.log(`Loaded config from ${CONFIG_FILE}`);
+  } catch (err) {
+    console.warn(`Failed to parse ${CONFIG_FILE}: ${err.message}`);
+  }
+}
+
+// Environment variables override config file
+const MESH_SERVER = process.env.IC_MESH_SERVER || config.meshServer;
+const NODE_NAME = process.env.IC_NODE_NAME || config.nodeName || os.hostname();
+const NODE_OWNER = process.env.IC_NODE_OWNER || config.nodeOwner || os.userInfo().username;
+const NODE_REGION = process.env.IC_NODE_REGION || config.nodeRegion;
+const CHECKIN_INTERVAL = config.checkinInterval;
+const JOB_POLL_INTERVAL = config.jobPollInterval;
+const UPDATE_CHECK_INTERVAL = config.updateCheckInterval;
 const NODE_ID_FILE = path.join(__dirname, '.node-id');
 
 // Job timeout defaults (ms) — payload.timeout (seconds) overrides
-const JOB_TIMEOUTS = {
-  ping: 5_000,
-  inference: 300_000,    // 5 min
-  transcribe: 600_000,   // 10 min
-  generate: 900_000,     // 15 min
-  default: 300_000
-};
+const JOB_TIMEOUTS = config.jobTimeouts;
 
 let nodeId = loadNodeId();
 let currentJob = null;
@@ -253,7 +278,7 @@ async function runInference(payload, timeoutMs) {
 }
 
 async function runGenerate(payload, timeoutMs) {
-  const SD_URL = process.env.IC_SD_URL || 'http://localhost:7860';
+  const SD_URL = process.env.IC_SD_URL || config.sdUrl;
   const params = {
     prompt: payload.prompt || '', negative_prompt: payload.negative_prompt || '',
     width: payload.width || 1024, height: payload.height || 1024,

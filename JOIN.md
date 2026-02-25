@@ -28,7 +28,7 @@ cd ic-mesh
 
 ### 2. Configure your node
 
-Set these environment variables (or create a `.env` file):
+**Option A: Environment variables**
 
 ```bash
 export IC_MESH_SERVER="https://moilol.com:8333"
@@ -37,7 +37,14 @@ export IC_NODE_OWNER="your-name"           # e.g. "drake"
 export IC_NODE_REGION="your-region"        # e.g. "hawaii", "nyc", "berlin"
 ```
 
-Or create a `.env` file in the `ic-mesh` directory:
+**Option B: Configuration file** (recommended for persistent setups)
+
+```bash
+cp node-config.json.sample node-config.json
+# Edit node-config.json with your settings
+```
+
+**Option C: .env file**
 
 ```
 IC_MESH_SERVER=https://moilol.com:8333
@@ -45,6 +52,8 @@ IC_NODE_NAME=hilo-mac-mini
 IC_NODE_OWNER=drake
 IC_NODE_REGION=hawaii
 ```
+
+**Priority:** Environment variables override config file values.
 
 ### 3. Start your node
 

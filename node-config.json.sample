@@ -1,0 +1,17 @@
+{
+  "meshServer": "http://localhost:8333",
+  "nodeName": null,
+  "nodeOwner": null,
+  "nodeRegion": "unknown",
+  "sdUrl": "http://localhost:7860",
+  "checkinInterval": 60000,
+  "jobPollInterval": 10000,
+  "updateCheckInterval": 300000,
+  "jobTimeouts": {
+    "ping": 5000,
+    "inference": 300000,
+    "transcribe": 600000,
+    "generate": 900000,
+    "default": 300000
+  }
+}
