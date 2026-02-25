@@ -100,6 +100,9 @@ if (fs.existsSync(CONFIG_FILE)) {
         }
       }
       
+      // WebSocket toggle from config
+      if (fileConfig.useWebSocket !== undefined) config.useWebSocket = fileConfig.useWebSocket;
+      
       // Store complete config for advanced features
       config._complexConfig = fileConfig;
       console.log(`◉ Loaded complex config from ${CONFIG_FILE}`);
@@ -129,6 +132,12 @@ const CHECKIN_INTERVAL = config.checkinInterval;
 const JOB_POLL_INTERVAL = config.jobPollInterval;
 const UPDATE_CHECK_INTERVAL = config.updateCheckInterval;
 const MAX_CONCURRENT_JOBS = config.maxConcurrentJobs || (config._complexConfig?.limits?.maxConcurrentJobs) || 3;
+
+// Auto-disable WebSocket for remote servers (proxy WS is unreliable)
+if (config.useWebSocket && MESH_SERVER && !MESH_SERVER.includes('localhost') && !MESH_SERVER.includes('127.0.0.1')) {
+  config.useWebSocket = false;
+  console.log('◉ Remote server detected — using HTTP polling (more reliable than WS proxy)');
+}
 const NODE_ID_FILE = path.join(__dirname, '.node-id');
 
 // Job timeout defaults (ms) — payload.timeout (seconds) overrides
