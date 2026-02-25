@@ -792,6 +792,35 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // ---- Earnings by email (aggregate across all nodes) ----
+    if (method === 'GET' && pathname === '/earnings') {
+      const email = url.searchParams.get('email');
+      if (!email) return json(res, { error: 'email parameter required' }, 400);
+      const nodes = db.prepare('SELECT nodeId, name FROM nodes WHERE payout_email = ?').all(email.toLowerCase().trim());
+      let totalEarned = 0, totalCashedOut = 0, totalJobs = 0;
+      const nodeEarnings = [];
+      for (const n of nodes) {
+        const entry = stmts.getPayout.get(n.nodeId) || { earned_ints: 0, cashed_out_ints: 0, jobs_paid: 0 };
+        totalEarned += entry.earned_ints;
+        totalCashedOut += entry.cashed_out_ints || 0;
+        totalJobs += entry.jobs_paid || 0;
+        if (entry.earned_ints > 0) {
+          nodeEarnings.push({ nodeId: n.nodeId, name: n.name, earned_ints: entry.earned_ints, cashed_out_ints: entry.cashed_out_ints || 0, jobs_paid: entry.jobs_paid || 0 });
+        }
+      }
+      const available = totalEarned - totalCashedOut;
+      return json(res, {
+        email,
+        total_earned_ints: totalEarned,
+        total_cashed_out_ints: totalCashedOut,
+        available_ints: available,
+        available_usd: (available * 0.0008).toFixed(2),
+        earned_usd: (totalEarned * 0.0008).toFixed(2),
+        total_jobs: totalJobs,
+        nodes: nodeEarnings
+      });
+    }
+
     // ---- Node onboarding (Stripe Connect) ----
     if (method === 'POST' && pathname === '/nodes/onboard') {
       const data = await parseBody(req);
