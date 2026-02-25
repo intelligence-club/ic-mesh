@@ -141,6 +141,7 @@ let wsConnection = null;
 let isConnecting = false;
 let shuttingDown = false;
 let jobRunning = false;
+let pollInterval = null;
 
 // ===== Node ID Persistence =====
 
@@ -527,6 +528,8 @@ function connectWebSocket() {
   wsConnection.on('open', () => {
     isConnecting = false;
     console.log(`◉ WebSocket connected — job polling disabled`);
+    // Stop HTTP polling fallback if running
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   });
   
   wsConnection.on('message', (data) => {
@@ -542,6 +545,10 @@ function connectWebSocket() {
     isConnecting = false;
     console.log(`◉ WebSocket disconnected: ${code} ${reason}`);
     console.log(`  Falling back to HTTP polling...`);
+    // Start HTTP polling as fallback while WS is down
+    if (!pollInterval) {
+      pollInterval = setInterval(pollJobs, JOB_POLL_INTERVAL);
+    }
     // Reconnect after 5 seconds
     setTimeout(connectWebSocket, 5000);
   });
