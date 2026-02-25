@@ -435,7 +435,7 @@ async function runCustomHandler(job) {
             const footer = `\r\n--${boundary}--\r\n`;
             const body = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
             
-            const uploadRes = await fetch(`${MESH_URL}/upload`, {
+            const uploadRes = await fetch(`${MESH_SERVER}/upload`, {
               method: 'POST',
               headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
               body
