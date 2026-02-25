@@ -158,7 +158,7 @@ function runHealthCheck() {
   
   // Wait for server to start
   setTimeout(() => {
-    const result = runCommand('node scripts/health-check.js', 'Health check');
+    const result = runCommand('node health-check.js', 'Health check');
     return result.success;
   }, 5000);
   
@@ -261,7 +261,7 @@ function showStatus() {
   }
   
   // Run health check
-  runCommand('node scripts/health-check.js', 'Current system health');
+  runCommand('node health-check.js', 'Current system health');
   
   // Show recent logs
   if (fs.existsSync(DEPLOY_LOG)) {
