@@ -650,8 +650,14 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Node-Id, X-Node-Secret');
   if (method === 'OPTIONS') { res.writeHead(204); return res.end(); }
 
-  // Rate limiting
-  const clientIp = req.socket.remoteAddress || 'unknown';
+  // Rate limiting - proxy-aware IP detection
+  function getClientIp(req) {
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() 
+      || req.headers['x-real-ip'] 
+      || req.socket.remoteAddress 
+      || 'unknown';
+  }
+  const clientIp = getClientIp(req);
   const rlGroup = method === 'POST' && pathname === '/upload' ? 'upload'
     : method === 'POST' && pathname === '/jobs' ? 'jobs-post'
     : method === 'POST' && pathname === '/nodes/register' ? 'nodes-register'
@@ -770,7 +776,7 @@ const server = http.createServer(async (req, res) => {
     // ---- Node Registry ----
     if (method === 'POST' && pathname === '/nodes/register') {
       const data = await parseBody(req);
-      data.ip = req.socket.remoteAddress;
+      data.ip = getClientIp(req);
       const node = registerNode(data);
       return json(res, { ok: true, node });
     }
