@@ -158,9 +158,9 @@ class HealthChecker {
 
     await this.check('Job submission', async () => {
       const testJob = {
-        type: 'health-check',
-        payload: JSON.stringify({ test: true, timestamp: Date.now() }),
-        timeout: 30000
+        type: 'transcribe',
+        payload: { test: true, timestamp: Date.now() },
+        requirements: { capability: 'transcription' }
       };
       
       const response = await this.httpRequest('POST', '/jobs', testJob);
