@@ -52,8 +52,24 @@ const CONFIG_FILE = path.join(__dirname, 'node-config.json');
 if (fs.existsSync(CONFIG_FILE)) {
   try {
     const fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    config = { ...config, ...fileConfig };
-    console.log(`Loaded config from ${CONFIG_FILE}`);
+    
+    // Handle both simple flat format and complex nested format
+    if (fileConfig.node || fileConfig.server) {
+      // Complex nested format (example.json style)
+      if (fileConfig.server?.url) config.meshServer = fileConfig.server.url;
+      if (fileConfig.node?.name) config.nodeName = fileConfig.node.name;
+      if (fileConfig.node?.owner) config.nodeOwner = fileConfig.node.owner;
+      if (fileConfig.node?.region) config.nodeRegion = fileConfig.node.region;
+      if (fileConfig.limits?.maxConcurrentJobs) config.maxConcurrentJobs = fileConfig.limits.maxConcurrentJobs;
+      
+      // Store complex config for advanced features
+      config._complexConfig = fileConfig;
+      console.log(`Loaded complex config from ${CONFIG_FILE}`);
+    } else {
+      // Simple flat format (sample.json style) 
+      config = { ...config, ...fileConfig };
+      console.log(`Loaded simple config from ${CONFIG_FILE}`);
+    }
   } catch (err) {
     console.warn(`Failed to parse ${CONFIG_FILE}: ${err.message}`);
   }
@@ -67,6 +83,7 @@ const NODE_REGION = process.env.IC_NODE_REGION || config.nodeRegion;
 const CHECKIN_INTERVAL = config.checkinInterval;
 const JOB_POLL_INTERVAL = config.jobPollInterval;
 const UPDATE_CHECK_INTERVAL = config.updateCheckInterval;
+const MAX_CONCURRENT_JOBS = config.maxConcurrentJobs || (config._complexConfig?.limits?.maxConcurrentJobs) || 3;
 const NODE_ID_FILE = path.join(__dirname, '.node-id');
 
 // Job timeout defaults (ms) — payload.timeout (seconds) overrides
@@ -567,8 +584,17 @@ async function main() {
   console.log(`  Server:  ${MESH_SERVER}`);
   console.log(`  Node:    ${NODE_NAME}`);
   console.log(`  Owner:   ${NODE_OWNER}`);
+  console.log(`  Region:  ${NODE_REGION}`);
   console.log(`  Version: ${version}`);
   console.log(`  NodeID:  ${nodeId || '(new)'}`);
+  
+  // Show configuration source
+  const configSources = [];
+  if (fs.existsSync(CONFIG_FILE)) configSources.push('config-file');
+  if (process.env.IC_MESH_SERVER) configSources.push('env-vars');
+  if (configSources.length === 0) configSources.push('defaults');
+  console.log(`  Config:  ${configSources.join(' + ')}`);
+  
   console.log('');
 
   await checkin();
