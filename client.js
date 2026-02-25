@@ -402,7 +402,7 @@ async function executeJob(job) {
   switch (job.type) {
     case 'inference': return await runInference(job.payload, getJobTimeout(job));
     case 'transcribe': return await runTranscribe(job.payload, getJobTimeout(job));
-    case 'generate': return await runGenerate(job.payload, getJobTimeout(job));
+    case 'generate': case 'generate-image': return await runGenerate(job.payload, getJobTimeout(job));
     case 'ping': return { pong: true, node: NODE_NAME, time: Date.now(), version: getLocalVersion() };
     default: throw new Error(`Unknown job type: ${job.type}`);
   }
