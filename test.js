@@ -2,7 +2,20 @@
 /**
  * IC Mesh Test Suite
  * 
- * Basic integration tests for API endpoints
+ * Comprehensive integration tests for API endpoints with enhanced error reporting.
+ * 
+ * Features:
+ * - Detailed error messages with HTTP status codes and response data
+ * - Context-aware assertions for better debugging
+ * - Rate limiting protection between tests
+ * - Support for both sync and async test patterns
+ * 
+ * Usage:
+ *   node test.js                    # Run all tests against localhost:8333
+ *   TEST_URL=http://other:8333 node test.js  # Run against different server
+ * 
+ * Environment Variables:
+ *   TEST_URL: Base URL for the IC Mesh server (default: http://localhost:8333)
  */
 
 const http = require('http');
@@ -110,10 +123,28 @@ class TestSuite {
     }
   }
 
-  assertEqual(actual, expected, message) {
+  assertEqual(actual, expected, message, context = null) {
     if (actual !== expected) {
-      throw new Error(message || `Expected ${expected}, got ${actual}`);
+      let errorMsg = message || `Expected ${expected}, got ${actual}`;
+      
+      // Add context information if available (useful for HTTP responses)
+      if (context && typeof context === 'object') {
+        errorMsg += `\nContext: ${JSON.stringify(context, null, 2)}`;
+      }
+      
+      throw new Error(errorMsg);
     }
+  }
+
+  // Helper method for HTTP response assertions with better error messages
+  assertHttpSuccess(response, operation) {
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(
+        `HTTP ${operation} failed with status ${response.status}\n` +
+        `Response: ${JSON.stringify(response.data, null, 2)}`
+      );
+    }
+    return response;
   }
 }
 
@@ -269,7 +300,16 @@ suite.test('Job claiming workflow', async () => {
   const claimRes = await suite.request('POST', `/jobs/${jobId}/claim`, {
     nodeId: actualNodeId
   });
-  suite.assertEqual(claimRes.status, 200, 'Should claim job successfully');
+  suite.assertEqual(
+    claimRes.status, 
+    200, 
+    `Should claim job successfully (jobId: ${jobId}, nodeId: ${actualNodeId})`,
+    { 
+      status: claimRes.status, 
+      data: claimRes.data,
+      endpoint: `POST /jobs/${jobId}/claim`
+    }
+  );
 });
 
 suite.test('Job completion workflow', async () => {
@@ -304,7 +344,16 @@ suite.test('Job completion workflow', async () => {
     result: { transcript: 'test transcript' },
     success: true
   });
-  suite.assertEqual(completeRes.status, 200, 'Should complete job successfully');
+  suite.assertEqual(
+    completeRes.status, 
+    200, 
+    `Should complete job successfully (jobId: ${jobId}, nodeId: ${actualNodeId})`,
+    { 
+      status: completeRes.status, 
+      data: completeRes.data,
+      endpoint: `POST /jobs/${jobId}/complete`
+    }
+  );
 
   // Verify job is marked completed
   const jobRes = await suite.request('GET', `/jobs/${jobId}`);
