@@ -7,7 +7,15 @@
     "start": "node server.js",
     "client": "node client.js",
     "test": "node test.js",
-    "test:ci": "timeout 30s node server.js & SERVER_PID=$!; sleep 2; node test.js; kill $SERVER_PID"
+    "test:ci": "timeout 30s node server.js & SERVER_PID=$!; sleep 2; node test.js; kill $SERVER_PID",
+    "test:watch": "while true; do node test.js; echo 'Press Ctrl+C to stop, or any key to rerun...'; read -t 5; done",
+    "lint": "find . -name '*.js' -not -path './node_modules/*' -exec node -c {} \\;",
+    "health": "curl -s http://localhost:8333/status | jq .",
+    "status": "node scripts/status.js",
+    "dev": "NODE_ENV=development node server.js",
+    "check-env": "node scripts/env-check.js",
+    "backup-db": "cp data/mesh.db data/mesh.db.backup.$(date +%Y%m%d_%H%M%S)",
+    "logs": "tail -f data/mesh.log 2>/dev/null || echo 'No log file found'"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
