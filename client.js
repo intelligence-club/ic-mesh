@@ -535,6 +535,16 @@ async function executeJob(job) {
 async function runInference(payload, timeoutMs) {
   const model = payload.model || 'llama3.1:8b';
   const prompt = payload.prompt || '';
+  
+  // Validate inputs
+  if (!prompt.trim()) throw new Error('Empty prompt — please provide a question or instruction');
+  
+  // Check if model exists on this node
+  const ollamaModels = getOllamaModels();
+  if (ollamaModels.length > 0 && !ollamaModels.some(m => m === model || m.startsWith(model.split(':')[0]))) {
+    throw new Error(`Model "${model}" not found. Available: ${ollamaModels.slice(0, 5).join(', ')}${ollamaModels.length > 5 ? '...' : ''}`);
+  }
+  
   const controller = new AbortController();
   let timer = setTimeout(() => controller.abort(), timeoutMs);
 
