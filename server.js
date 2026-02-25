@@ -517,8 +517,11 @@ function handleWsMessage(nodeId, msg, ws) {
       ws.send(JSON.stringify({ type: 'job.complete.result', jobId: msg.jobId, ok: !!completed }));
       break;
     case 'job.progress':
-      // Store progress in DB for HTTP polling
-      try { db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(msg.progress), msg.jobId); } catch(e) {}
+      // Store progress in DB with timestamp for staleness detection
+      try {
+        const progData = { ...msg.progress, _updated: Date.now() };
+        db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(progData), msg.jobId);
+      } catch(e) {}
       broadcastEvent('job.progress', { jobId: msg.jobId, progress: msg.progress, nodeId });
       break;
   }
@@ -740,7 +743,10 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/progress$/)) {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);
-      try { db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(data.progress || data), jobId); } catch(e) {}
+      try {
+        const progData = { ...(data.progress || data), _updated: Date.now() };
+        db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(progData), jobId);
+      } catch(e) {}
       broadcastEvent('job.progress', { jobId, progress: data.progress || data, nodeId: data.nodeId });
       return json(res, { ok: true });
     }
@@ -1614,19 +1620,44 @@ storage.initSpaces().then(ok => {
   if (!ok) console.log('  📁 Storage: local disk (set DO_SPACES_KEY/SECRET for Spaces)');
 });
 
-// Reap stale claimed jobs every 60s (no zombies)
-const JOB_CLAIM_TTL = { ping: 30000, inference: 600000, transcribe: 900000, generate: 1200000, default: 600000 };
+// Reap stale claimed jobs every 30s (no zombies)
+// Layer 1: Hard timeout per job type
+// Layer 2: If no progress update in 120s, assume dead
+const JOB_CLAIM_TTL = { ping: 30000, inference: 300000, transcribe: 600000, 'generate-image': 600000, generate: 600000, default: 300000 };
+const PROGRESS_SILENCE_TTL = 120000; // 2 minutes without progress = dead
 setInterval(() => {
-  const cutoff = Date.now() - 600000; // conservative: 10 min default
-  const stale = stmts.getClaimedStale.all(cutoff);
-  for (const job of stale) {
+  const claimed = stmts.getClaimedStale.all(Date.now() - 60000); // check anything claimed > 60s ago
+  for (const job of claimed) {
     const ttl = JOB_CLAIM_TTL[job.type] || JOB_CLAIM_TTL.default;
-    if (Date.now() - job.claimedAt > ttl) {
-      console.log(`◉ Reaper: job ${job.jobId} (${job.type}) timed out after ${Math.round((Date.now() - job.claimedAt)/1000)}s`);
-      stmts.failJob.run(JSON.stringify({ error: `Reaped: no completion after ${Math.round(ttl/1000)}s` }), job.jobId);
+    const age = Date.now() - job.claimedAt;
+    
+    // Hard timeout
+    if (age > ttl) {
+      console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) HARD TIMEOUT after ${Math.round(age/1000)}s`);
+      db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+      continue;
+    }
+    
+    // Progress silence check — if claimed > 2 min ago and never sent progress, reclaim
+    if (age > PROGRESS_SILENCE_TTL) {
+      const hasProgress = job.progress && job.progress !== 'null';
+      if (!hasProgress) {
+        console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) NO PROGRESS for ${Math.round(age/1000)}s — reclaiming`);
+        db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+        continue;
+      }
+      
+      // Has progress — check when last updated
+      try {
+        const prog = JSON.parse(job.progress);
+        if (prog._updated && Date.now() - prog._updated > PROGRESS_SILENCE_TTL) {
+          console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) STALE PROGRESS — reclaiming`);
+          db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+        }
+      } catch {}
     }
   }
-}, 60000);
+}, 30000);
 
 // Reap stale PENDING jobs every hour (24h TTL — if no node claims it, it's dead)
 const PENDING_JOB_TTL = 24 * 60 * 60 * 1000; // 24 hours
