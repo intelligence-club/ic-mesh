@@ -511,7 +511,7 @@ function setupWebSocket(server) {
     const nodeId = url.searchParams.get('nodeId') || 'unknown';
     
     wsClients.set(nodeId, ws);
-    logger.node('WebSocket connected', nodeId, {
+    logger.nodeEvent(nodeId, 'WebSocket connected', {
       totalConnections: wsClients.size,
       type: 'ws_connect'
     });
@@ -527,7 +527,7 @@ function setupWebSocket(server) {
     
     ws.on('close', () => {
       wsClients.delete(nodeId);
-      logger.node('WebSocket disconnected', nodeId, {
+      logger.nodeEvent(nodeId, 'WebSocket disconnected', {
         totalConnections: wsClients.size,
         type: 'ws_disconnect'
       });
@@ -960,7 +960,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const result = await connect.createConnectedAccount(nodeId, email, country || 'US');
         db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?').run(result.stripe_account_id, email, nodeId);
-        logger.node('Stripe Connect success', nodeId.slice(0, 8), {
+        logger.nodeEvent(nodeId.slice(0, 8), 'Stripe Connect success', {
           nodeName: node.name,
           stripeAccountId: result.stripe_account_id,
           email: email,
@@ -991,7 +991,7 @@ const server = http.createServer(async (req, res) => {
       if (source.owner !== target.owner) return json(res, { error: 'Nodes must have the same owner' }, 403);
       db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?')
         .run(source.stripe_account_id, source.payout_email || '', nodeId);
-      logger.node('Stripe account linked', nodeId.slice(0, 8), {
+      logger.nodeEvent(nodeId.slice(0, 8), 'Stripe account linked', {
         targetNode: target.name,
         sourceNode: source.name,
         sourceNodeId: sourceNodeId.slice(0, 8),
@@ -1045,7 +1045,7 @@ const server = http.createServer(async (req, res) => {
           const status = await connect.checkAccountStatus(node.stripe_account_id);
           if (status.payouts_enabled) {
             transferResult = await connect.transferToNode(node.stripe_account_id, requestedInts, nodeId);
-            logger.node('Stripe transfer completed', nodeId.slice(0, 8), {
+            logger.nodeEvent(nodeId.slice(0, 8), 'Stripe transfer completed', {
               amount: requestedInts,
               amountUsd: amountUsd,
               transferId: transferResult.transfer_id,
