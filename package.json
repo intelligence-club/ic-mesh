@@ -48,6 +48,9 @@
     "api-test:contracts": "node scripts/api-testing-framework.js contracts",
     "api-test:integration": "node scripts/api-testing-framework.js integration",
     "api-test:edge-cases": "node scripts/api-testing-framework.js edge-cases",
+    "health:realtime": "node scripts/real-time-health-monitor.js",
+    "health:realtime:once": "node scripts/real-time-health-monitor.js --once",
+    "health:realtime:quiet": "node scripts/real-time-health-monitor.js --quiet",
     "health:regenerative": "node scripts/regenerative-health-monitor.js",
     "health:regenerative:detailed": "node scripts/regenerative-health-monitor.js --detailed"
   },
