@@ -741,7 +741,7 @@ const server = http.createServer(async (req, res) => {
       
       // Authentication: require API key or internal origin
       const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
-      const isInternal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+      const isInternal = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
       
       if (!isInternal && !apiKey) {
         return json(res, { 
@@ -765,7 +765,7 @@ const server = http.createServer(async (req, res) => {
           if (!keyCheck.valid) {
             // Allow through for now during beta, but log
             logger.api('Unvalidated API key', apiKey.slice(0, 8), {
-              ip: ip,
+              ip: clientIp,
               status: 'unvalidated_but_allowed',
               phase: 'beta'
             });
