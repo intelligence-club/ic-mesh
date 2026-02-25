@@ -380,8 +380,39 @@ async function runCustomHandler(job) {
   env.HANDLER_TEMP_DIR = tmpDir;
   
   try {
-    // Execute handler command with timeout
-    const output = await execWithTimeout(handler.command, timeoutMs);
+    // Download input files if URL provided
+    const inputFiles = [];
+    if (job.payload?.url) {
+      const ext = path.extname(new URL(job.payload.url).pathname) || '.bin';
+      const inputFile = path.join(tmpDir, `input${ext}`);
+      await execWithTimeout(`curl -sL -o "${inputFile}" "${job.payload.url}"`, Math.min(timeoutMs, 120_000));
+      inputFiles.push(inputFile);
+    }
+    
+    // Prepare stdin data for handler
+    const stdinData = JSON.stringify({
+      ...job,
+      inputFiles,
+      outputDir: tmpDir
+    });
+    
+    // Execute handler command with stdin and timeout
+    const output = await new Promise((resolve, reject) => {
+      const proc = require('child_process').spawn('bash', ['-c', handler.command], {
+        env, cwd: path.join(__dirname),
+        timeout: timeoutMs
+      });
+      let stdout = '', stderr = '';
+      proc.stdout.on('data', d => stdout += d);
+      proc.stderr.on('data', d => { stderr += d; process.stderr.write(d); });
+      proc.on('close', code => {
+        if (code === 0) resolve(stdout);
+        else reject(new Error(`Exit ${code}: ${stderr.slice(-500)}`));
+      });
+      proc.on('error', reject);
+      proc.stdin.write(stdinData);
+      proc.stdin.end();
+    });
     
     // Try to parse output as JSON, fall back to plain text
     try {
