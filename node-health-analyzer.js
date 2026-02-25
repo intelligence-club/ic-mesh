@@ -22,7 +22,7 @@ const nodeStats = db.prepare(`
     n.name,
     n.owner,
     n.lastSeen,
-    (strftime('%s','now') - n.lastSeen) / 60 as minutesOffline,
+    (strftime('%s','now') * 1000 - n.lastSeen) / (1000 * 60) as minutesOffline,
     COUNT(j.jobId) as totalJobs,
     SUM(CASE WHEN j.status = 'completed' THEN 1 ELSE 0 END) as completedJobs,
     SUM(CASE WHEN j.status = 'failed' THEN 1 ELSE 0 END) as failedJobs,

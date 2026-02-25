@@ -50,7 +50,7 @@ sampleJobs.forEach(job => {
 });
 
 // Active nodes
-const activeNodes = db.prepare("SELECT COUNT(*) as count FROM nodes WHERE lastHeartbeat > ?").get(Date.now() - (5 * 60 * 1000));
+const activeNodes = db.prepare("SELECT COUNT(*) as count FROM nodes WHERE lastSeen > ?").get(Date.now() - (5 * 60 * 1000));
 console.log(`\n🖥️  Active nodes (last 5 min): ${activeNodes.count}`);
 
 db.close();
