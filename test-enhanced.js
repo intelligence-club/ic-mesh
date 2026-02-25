@@ -122,7 +122,8 @@ suite.test('GET /status returns network status', async () => {
 suite.test('GET /nodes returns nodes data', async () => {
   const res = await suite.request('GET', '/nodes');
   suite.assertEqual(res.status, 200, 'Nodes endpoint should return 200');
-  suite.assert(Array.isArray(res.data.nodes), 'Should return nodes array');
+  suite.assert(res.data.nodes && typeof res.data.nodes === 'object', 'Should return nodes object');
+  suite.assert(typeof res.data.total === 'number', 'Should include total count');
 });
 
 // Fixed job claiming test with TEST_MODE requirement
