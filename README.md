@@ -330,6 +330,25 @@ Tests cover: status, node registration, job lifecycle, WebSocket, error handling
 - 📖 [JOIN.md](JOIN.md) — Full setup guide
 - 📐 [PROTOCOL.md](PROTOCOL.md) — Protocol spec
 
+## 🌱 Regenerative Computing
+
+The Intelligence Club Mesh isn't just distributed computing—it's **regenerative** computing. Like healthy soil that creates abundance while healing the ecosystem, our mesh network operates on principles that strengthen the whole while serving each part.
+
+**Study & Implementation:**
+- 📖 [REGENERATIVE-COMPUTING.md](docs/REGENERATIVE-COMPUTING.md) — How Korean Natural Farming principles guide distributed intelligence toward planetary healing
+- 🔧 [KNF-IMPLEMENTATION-GUIDE.md](docs/KNF-IMPLEMENTATION-GUIDE.md) — Practical code patterns implementing biological principles in mesh networks
+- 🩺 `npm run health:regenerative` — Monitor network health using biological metrics (diversity, activity, resilience, circulation)
+
+**Vision:** A distributed intelligence network that heals the planet. Compute that serves life. Technology that makes the earth more alive, not less.
+
+The mesh becomes a tool for ecosystem restoration when we direct its computational power toward:
+- Carbon sequestration monitoring and verification
+- Biodiversity tracking and restoration consulting  
+- Precision regenerative agriculture optimization
+- Watershed management and ecological modeling
+
+**"The network that heals the earth"** isn't just aspiration—it's practical possibility emerging from regenerative principles applied to computing.
+
 ---
 
 **Intelligence Club** · Open source · Hawaiʻi-based · [hello@moilol.com](mailto:hello@moilol.com)
