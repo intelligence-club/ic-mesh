@@ -139,6 +139,12 @@ db.exec(`
     body TEXT,
     created TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS user_credits (
+    email TEXT PRIMARY KEY,
+    balance_ints INTEGER DEFAULT 0,
+    last_updated TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // ===== PREPARED STATEMENTS =====
@@ -190,7 +196,17 @@ const stmts = {
     INSERT INTO tickets (id, email, api_key, category, priority, subject, body, job_id, status, created)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', datetime('now'))
   `),
-  markJobRefunded: db.prepare("UPDATE jobs SET refunded = 1 WHERE jobId = ?")
+  markJobRefunded: db.prepare("UPDATE jobs SET refunded = 1 WHERE jobId = ?"),
+  
+  // User credits/balance system (for refunds)
+  addInts: db.prepare(`
+    INSERT INTO user_credits (email, balance_ints, last_updated) 
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(email) DO UPDATE SET 
+      balance_ints = balance_ints + excluded.balance_ints,
+      last_updated = datetime('now')
+  `),
+  getUserBalance: db.prepare('SELECT * FROM user_credits WHERE email = ?')
 };
 
 function migrateFromJSON() {
@@ -940,7 +956,7 @@ const server = http.createServer(async (req, res) => {
           // Auto-refund failed jobs
           const ints = parseInt(job.ints_cost || 0);
           if (ints > 0) {
-            stmts.addInts.run(email, ints, 'auto_refund', `Failed job ${job_id} - support ticket ${ticket_id}`);
+            stmts.addInts.run(email, ints);
             stmts.markJobRefunded.run(job_id);
             actions_taken.push({ action: 'refund', amount_ints: ints, job_id: job_id });
             refund_ints = ints;
@@ -983,6 +999,164 @@ const server = http.createServer(async (req, res) => {
         message: resolution || 'Thank you for contacting support. We\'ve received your ticket and will respond within 24 hours.',
         auto_resolved,
         refund_ints
+      });
+    }
+
+    // ---- Get ticket details ----
+    if (method === 'GET' && pathname.match(/^\/api\/tickets\/[^/]+$/)) {
+      const ticketId = pathname.split('/')[3];
+      const ticket = stmts.getTicket.get(ticketId);
+      if (!ticket) return json(res, { error: 'Ticket not found' }, 404);
+      
+      const messages = db.prepare('SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created ASC').all(ticketId);
+      
+      return json(res, {
+        ticket: {
+          id: ticket.id,
+          email: ticket.email,
+          category: ticket.category,
+          priority: ticket.priority,
+          subject: ticket.subject,
+          job_id: ticket.job_id,
+          status: ticket.status,
+          auto_resolved: ticket.auto_resolved,
+          resolution: ticket.resolution,
+          actions_taken: ticket.actions_taken ? JSON.parse(ticket.actions_taken) : [],
+          created: ticket.created,
+          updated: ticket.updated,
+          resolved_at: ticket.resolved_at
+        },
+        messages: messages.map(m => ({
+          id: m.id,
+          sender: m.sender,
+          body: m.body,
+          created: m.created
+        }))
+      });
+    }
+
+    // ---- List tickets (admin only) ----
+    if (method === 'GET' && pathname === '/api/tickets') {
+      const adminKey = req.headers['x-admin-key'] || req.headers['authorization']?.replace('Bearer ', '');
+      if (adminKey !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
+        return json(res, { error: 'Unauthorized' }, 401);
+      }
+      
+      const status = url.searchParams.get('status') || null;
+      const limit = parseInt(url.searchParams.get('limit')) || 50;
+      const offset = parseInt(url.searchParams.get('offset')) || 0;
+      
+      let query = 'SELECT * FROM tickets';
+      let params = [];
+      if (status) {
+        query += ' WHERE status = ?';
+        params.push(status);
+      }
+      query += ' ORDER BY created DESC LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+      
+      const tickets = db.prepare(query).all(...params);
+      const total = db.prepare('SELECT COUNT(*) as count FROM tickets' + (status ? ' WHERE status = ?' : '')).get(...(status ? [status] : [])).count;
+      
+      return json(res, {
+        tickets: tickets.map(t => ({
+          id: t.id,
+          email: t.email,
+          category: t.category,
+          priority: t.priority,
+          subject: t.subject,
+          job_id: t.job_id,
+          status: t.status,
+          auto_resolved: t.auto_resolved,
+          created: t.created,
+          updated: t.updated
+        })),
+        total,
+        limit,
+        offset
+      });
+    }
+
+    // ---- Add message to ticket ----
+    if (method === 'POST' && pathname.match(/^\/api\/tickets\/[^/]+\/messages$/)) {
+      const ticketId = pathname.split('/')[3];
+      const data = await parseBody(req);
+      const { sender, body } = data;
+      
+      if (!sender || !body) {
+        return json(res, { error: 'sender and body required' }, 400);
+      }
+      
+      const ticket = stmts.getTicket.get(ticketId);
+      if (!ticket) return json(res, { error: 'Ticket not found' }, 404);
+      
+      const now = new Date().toISOString();
+      const messageId = db.prepare(`
+        INSERT INTO ticket_messages (ticket_id, sender, body, created)
+        VALUES (?, ?, ?, ?)
+      `).run(ticketId, sender, body, now).lastInsertRowid;
+      
+      // Update ticket timestamp
+      db.prepare('UPDATE tickets SET updated = ? WHERE id = ?').run(now, ticketId);
+      
+      console.log(`📨 Message added to ticket ${ticketId} by ${sender}`);
+      
+      return json(res, {
+        message_id: messageId,
+        ticket_id: ticketId,
+        sender,
+        body,
+        created: now
+      });
+    }
+
+    // ---- Update ticket status ----
+    if (method === 'PATCH' && pathname.match(/^\/api\/tickets\/[^/]+$/)) {
+      const ticketId = pathname.split('/')[3];
+      const data = await parseBody(req);
+      const { status, resolution, escalated_to } = data;
+      
+      const ticket = stmts.getTicket.get(ticketId);
+      if (!ticket) return json(res, { error: 'Ticket not found' }, 404);
+      
+      const now = new Date().toISOString();
+      const updates = { updated: now };
+      
+      if (status) updates.status = status;
+      if (resolution) updates.resolution = resolution;
+      if (escalated_to) updates.escalated_to = escalated_to;
+      if (status === 'resolved' || status === 'closed') updates.resolved_at = now;
+      
+      const setClause = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+      const values = [...Object.values(updates), ticketId];
+      
+      db.prepare(`UPDATE tickets SET ${setClause} WHERE id = ?`).run(...values);
+      
+      console.log(`🎫 Ticket ${ticketId} updated: ${Object.keys(updates).join(', ')}`);
+      
+      return json(res, {
+        ticket_id: ticketId,
+        updates,
+        message: `Ticket ${ticketId} updated successfully`
+      });
+    }
+
+    // ---- Get ticket messages ----
+    if (method === 'GET' && pathname.match(/^\/api\/tickets\/[^/]+\/messages$/)) {
+      const ticketId = pathname.split('/')[3];
+      const ticket = stmts.getTicket.get(ticketId);
+      if (!ticket) return json(res, { error: 'Ticket not found' }, 404);
+      
+      const messages = db.prepare('SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created ASC').all(ticketId);
+      
+      return json(res, {
+        ticket_id: ticketId,
+        messages: messages.map(m => ({
+          id: m.id,
+          sender: m.sender,
+          body: m.body,
+          created: m.created
+        }))
       });
     }
     
@@ -1085,6 +1259,182 @@ try {
     while (el.children.length > 50) el.removeChild(el.lastChild);
   };
 } catch(e) {}
+</script>
+</body></html>`;
+}
+
+function getOperatorDashboardHTML(nodeId) {
+  // Get node data
+  const node = stmts.getNodeById.get(nodeId);
+  if (!node) {
+    return `<!DOCTYPE html><html><head><title>Node Not Found</title></head>
+    <body style="font-family: monospace; padding: 2rem; background: #0a0e17; color: #c8d6e5;">
+    <h1 style="color: #ef4444;">Node Not Found</h1>
+    <p>Node ID "${nodeId}" does not exist or has not registered with this mesh.</p>
+    <a href="/" style="color: #2d86ff;">← Back to Network Dashboard</a>
+    </body></html>`;
+  }
+  
+  const n = nodeToJSON(node);
+  const isOnline = n.status === 'online';
+  const hasWs = wsClients.has(n.nodeId);
+  
+  // Get recent jobs for this node
+  const recentJobs = stmts.getJobsByNode ? stmts.getJobsByNode.all(nodeId, 50) : 
+    db.prepare('SELECT * FROM jobs WHERE completedBy = ? ORDER BY created DESC LIMIT 50').all(nodeId);
+  
+  // Calculate earnings
+  const earnings = stmts.getLedger.get(nodeId) || { earned: 0, withdrawn: 0 };
+  const pendingBalance = Math.round((earnings.earned - (earnings.withdrawn || 0)) * 100) / 100;
+  
+  // Job stats for this node
+  const jobStats = {
+    total: recentJobs.length,
+    completed: recentJobs.filter(j => j.status === 'completed').length,
+    failed: recentJobs.filter(j => j.status === 'failed').length,
+    pending: recentJobs.filter(j => j.status === 'pending' || j.status === 'claimed').length
+  };
+  
+  return `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Node ${n.name} — IC Mesh Operator Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0e17; color: #c8d6e5; font-family: 'Courier New', monospace; padding: 2rem; }
+  h1 { color: #2d86ff; font-size: 1.4rem; letter-spacing: 0.1em; margin-bottom: 0.5rem; font-weight: 400; }
+  .subtitle { color: #6b7c93; font-size: 0.9rem; margin-bottom: 2rem; }
+  .nav { margin-bottom: 2rem; }
+  .nav a { color: #2d86ff; text-decoration: none; font-size: 0.8rem; }
+  .nav a:hover { text-decoration: underline; }
+  .status { margin-bottom: 2rem; padding: 1.5rem; border: 1px solid ${isOnline ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}; }
+  .status h2 { color: ${isOnline ? '#22c55e' : '#ef4444'}; font-size: 1rem; margin-bottom: 1rem; }
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+  .status-item { }
+  .status-item .label { color: #6b7c93; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; }
+  .status-item .value { color: #e0e8f0; font-size: 1.1rem; margin-top: 0.25rem; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .stat { border: 1px solid rgba(45,134,255,0.2); padding: 1.5rem; text-align: center; }
+  .stat .num { font-size: 2rem; color: #22c55e; display: block; }
+  .stat .label { font-size: 0.7rem; color: #6b7c93; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 0.5rem; }
+  .earnings { border: 1px solid rgba(34,197,94,0.3); padding: 1.5rem; margin-bottom: 2rem; background: rgba(34,197,94,0.05); }
+  .earnings h2 { color: #22c55e; font-size: 1rem; margin-bottom: 1rem; }
+  .earnings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; }
+  .job { border: 1px solid rgba(45,134,255,0.1); padding: 1rem; margin-bottom: 0.5rem; font-size: 0.8rem; }
+  .job-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .job-id { color: #2d86ff; }
+  .job-type { color: #a78bfa; text-transform: uppercase; font-size: 0.7rem; }
+  .job-status { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.6rem; text-transform: uppercase; }
+  .job-status.completed { background: rgba(34,197,94,0.2); color: #22c55e; }
+  .job-status.failed { background: rgba(239,68,68,0.2); color: #ef4444; }
+  .job-status.pending { background: rgba(249,115,22,0.2); color: #f59e0b; }
+  .job-status.claimed { background: rgba(168,85,247,0.2); color: #a78bfa; }
+  .job-details { color: #6b7c93; font-size: 0.7rem; }
+  h2 { color: #2d86ff; font-size: 0.9rem; letter-spacing: 0.15em; margin: 2rem 0 1rem; font-weight: 400; }
+  .refresh { color: #4a5568; font-size: 0.7rem; margin-top: 2rem; text-align: center; }
+  .refresh a { color: #2d86ff; }
+</style>
+</head><body>
+<div class="nav"><a href="/">← Back to Network Dashboard</a></div>
+<h1>◉ NODE: ${n.name}</h1>
+<div class="subtitle">Operator Dashboard | ${nodeId}</div>
+
+<div class="status">
+  <h2>${isOnline ? '🟢 ONLINE' : '🔴 OFFLINE'}</h2>
+  <div class="status-grid">
+    <div class="status-item">
+      <div class="label">Status</div>
+      <div class="value">${isOnline ? 'Active' : 'Disconnected'}${hasWs ? ' ⚡ WebSocket' : ''}</div>
+    </div>
+    <div class="status-item">
+      <div class="label">Owner</div>
+      <div class="value">${n.owner || 'Unknown'}</div>
+    </div>
+    <div class="status-item">
+      <div class="label">Region</div>
+      <div class="value">${n.region || 'Unknown'}</div>
+    </div>
+    <div class="status-item">
+      <div class="label">Capabilities</div>
+      <div class="value">${n.capabilities?.join(', ') || 'None'}</div>
+    </div>
+    <div class="status-item">
+      <div class="label">Resources</div>
+      <div class="value">${n.resources?.cpuCores || 'Unknown'} cores, ${Math.round((n.resources?.ramMB || 0)/1024)}GB RAM</div>
+    </div>
+    <div class="status-item">
+      <div class="label">Last Checkin</div>
+      <div class="value">${n.lastCheckIn ? new Date(n.lastCheckIn).toLocaleString() : 'Never'}</div>
+    </div>
+  </div>
+</div>
+
+<div class="earnings">
+  <h2>💰 EARNINGS & PAYOUTS</h2>
+  <div class="earnings-grid">
+    <div class="stat">
+      <span class="num">${pendingBalance}</span>
+      <span class="label">Pending Balance (min)</span>
+    </div>
+    <div class="stat">
+      <span class="num">${Math.round((earnings.earned || 0) * 100) / 100}</span>
+      <span class="label">Total Earned</span>
+    </div>
+    <div class="stat">
+      <span class="num">${Math.round((earnings.withdrawn || 0) * 100) / 100}</span>
+      <span class="label">Withdrawn</span>
+    </div>
+    <div class="stat">
+      <span class="num">${n.jobsCompleted || 0}</span>
+      <span class="label">Jobs Completed</span>
+    </div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat">
+    <span class="num">${jobStats.completed}</span>
+    <span class="label">Completed</span>
+  </div>
+  <div class="stat">
+    <span class="num">${jobStats.pending}</span>
+    <span class="label">Active/Pending</span>
+  </div>
+  <div class="stat">
+    <span class="num">${jobStats.failed}</span>
+    <span class="label">Failed</span>
+  </div>
+  <div class="stat">
+    <span class="num">${Math.round((n.computeMinutes || 0) * 100) / 100}</span>
+    <span class="label">Compute Minutes</span>
+  </div>
+</div>
+
+<h2>RECENT JOBS</h2>
+${recentJobs.length ? recentJobs.map(job => `
+<div class="job">
+  <div class="job-header">
+    <span class="job-id">${job.jobId}</span>
+    <span class="job-type">${job.type}</span>
+    <span class="job-status ${job.status}">${job.status}</span>
+  </div>
+  <div class="job-details">
+    Created: ${new Date(job.created).toLocaleString()} | 
+    ${job.duration ? `Duration: ${Math.round(job.duration/1000)}s` : ''} | 
+    ${job.priceInts ? `Value: ${Math.round(job.priceInts/100 * 10)/10} min` : ''}
+  </div>
+</div>
+`).join('') : '<div class="job"><div class="job-details">No recent jobs found.</div></div>'}
+
+<div class="refresh">
+  <a href="">Refresh</a> | Auto-refreshes every 30s | 
+  <a href="/status">JSON API</a> | 
+  <a href="/operator/${nodeId}">Permalink</a>
+</div>
+
+<script>
+setTimeout(() => location.reload(), 30000);
 </script>
 </body></html>`;
 }

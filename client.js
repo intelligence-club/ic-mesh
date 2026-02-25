@@ -45,6 +45,22 @@ let config = {
     transcribe: 600_000,
     generate: 900_000,
     default: 300_000
+  },
+  // New configuration options
+  handlers: {},
+  limits: {
+    maxCpuPercent: 80,
+    maxRamPercent: 70,
+    maxConcurrentJobs: 3,
+    maxFileSizeMB: 50
+  },
+  schedule: {
+    enabled: false,
+    timezone: null,
+    available: []
+  },
+  pricing: {
+    multiplier: 1.0
   }
 };
 
@@ -60,19 +76,48 @@ if (fs.existsSync(CONFIG_FILE)) {
       if (fileConfig.node?.name) config.nodeName = fileConfig.node.name;
       if (fileConfig.node?.owner) config.nodeOwner = fileConfig.node.owner;
       if (fileConfig.node?.region) config.nodeRegion = fileConfig.node.region;
-      if (fileConfig.limits?.maxConcurrentJobs) config.maxConcurrentJobs = fileConfig.limits.maxConcurrentJobs;
       
-      // Store complex config for advanced features
+      // Enhanced config loading
+      if (fileConfig.limits) {
+        config.limits = { ...config.limits, ...fileConfig.limits };
+      }
+      if (fileConfig.handlers) {
+        config.handlers = fileConfig.handlers;
+      }
+      if (fileConfig.schedule) {
+        config.schedule = { ...config.schedule, ...fileConfig.schedule };
+      }
+      if (fileConfig.pricing) {
+        config.pricing = { ...config.pricing, ...fileConfig.pricing };
+      }
+      
+      // Update job timeouts from handler config
+      if (fileConfig.handlers) {
+        for (const [handlerName, handlerConfig] of Object.entries(fileConfig.handlers)) {
+          if (handlerConfig.resources?.timeout) {
+            config.jobTimeouts[handlerName] = handlerConfig.resources.timeout * 1000; // Convert to ms
+          }
+        }
+      }
+      
+      // Store complete config for advanced features
       config._complexConfig = fileConfig;
-      console.log(`Loaded complex config from ${CONFIG_FILE}`);
+      console.log(`◉ Loaded complex config from ${CONFIG_FILE}`);
+      console.log(`  Handlers: ${Object.keys(config.handlers).filter(h => config.handlers[h].enabled !== false).length} enabled`);
+      console.log(`  Limits: ${config.limits.maxCpuPercent}% CPU, ${config.limits.maxRamPercent}% RAM, ${config.limits.maxConcurrentJobs} concurrent jobs`);
+      if (config.schedule.enabled) {
+        console.log(`  Schedule: ${config.schedule.available?.length || 0} time windows (${config.schedule.timezone})`);
+      }
     } else {
       // Simple flat format (sample.json style) 
       config = { ...config, ...fileConfig };
-      console.log(`Loaded simple config from ${CONFIG_FILE}`);
+      console.log(`◉ Loaded simple config from ${CONFIG_FILE}`);
     }
   } catch (err) {
     console.warn(`Failed to parse ${CONFIG_FILE}: ${err.message}`);
   }
+} else {
+  console.log(`◉ No config file found at ${CONFIG_FILE}, using defaults`);
 }
 
 // Environment variables override config file
@@ -155,6 +200,7 @@ function getCapabilities() {
     } catch { return false; }
   };
 
+  // Auto-detected capabilities
   if (which('ollama')) caps.push('ollama');
   if (which('whisper')) caps.push('whisper');
   if (which('ffmpeg')) caps.push('ffmpeg');
@@ -168,7 +214,16 @@ function getCapabilities() {
   if (httpOk('http://localhost:7860/sdapi/v1/sd-models')) caps.push('stable-diffusion');
   if (httpOk('http://localhost:8188/system_stats')) caps.push('comfyui');
 
-  return caps;
+  // Add capabilities from enabled handlers
+  if (config.handlers) {
+    for (const [handlerName, handlerConfig] of Object.entries(config.handlers)) {
+      if (handlerConfig.enabled !== false) {
+        caps.push(handlerName);
+      }
+    }
+  }
+
+  return [...new Set(caps)]; // Remove duplicates
 }
 
 function getOllamaModels() {
@@ -217,8 +272,16 @@ async function meshFetchRetry(urlPath, options = {}, retries = 3) {
 // ===== Job Execution with Timeout =====
 
 function getJobTimeout(job) {
+  // Job-specific timeout in payload takes precedence
   if (job.payload?.timeout) return Math.min(job.payload.timeout * 1000, 1_800_000);
-  return JOB_TIMEOUTS[job.type] || JOB_TIMEOUTS.default;
+  
+  // Handler-specific timeout from config
+  if (config.handlers?.[job.type]?.resources?.timeout) {
+    return config.handlers[job.type].resources.timeout * 1000;
+  }
+  
+  // Global job timeout config
+  return config.jobTimeouts[job.type] || config.jobTimeouts.default;
 }
 
 /**
@@ -266,9 +329,75 @@ async function executeJobSafe(job) {
   }
 }
 
+async function runCustomHandler(job) {
+  const handler = config.handlers[job.type];
+  const timeoutMs = getJobTimeout(job);
+  
+  if (!handler.command) {
+    throw new Error(`Handler ${job.type} has no command specified`);
+  }
+  
+  console.log(`  ◉ Running custom handler: ${handler.command}`);
+  
+  // Prepare environment variables
+  const env = { ...process.env };
+  
+  // Add handler-specific environment variables
+  if (handler.env) {
+    Object.assign(env, handler.env);
+  }
+  
+  // Add job payload as environment variables
+  if (job.payload) {
+    env.JOB_PAYLOAD = JSON.stringify(job.payload);
+    env.JOB_ID = job.jobId;
+    env.JOB_TYPE = job.type;
+    
+    // Add specific payload fields as env vars
+    for (const [key, value] of Object.entries(job.payload)) {
+      if (typeof value === 'string' || typeof value === 'number') {
+        env[`JOB_${key.toUpperCase()}`] = String(value);
+      }
+    }
+  }
+  
+  // Create temporary directory for handler output
+  const tmpDir = path.join(os.tmpdir(), `ic-mesh-handler-${Date.now()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  env.HANDLER_OUTPUT_DIR = tmpDir;
+  env.HANDLER_TEMP_DIR = tmpDir;
+  
+  try {
+    // Execute handler command with timeout
+    const output = await execWithTimeout(handler.command, timeoutMs);
+    
+    // Try to parse output as JSON, fall back to plain text
+    try {
+      return JSON.parse(output.trim());
+    } catch {
+      return { 
+        success: true, 
+        output: output.trim(),
+        handler: job.type
+      };
+    }
+  } catch (error) {
+    throw new Error(`Handler ${job.type} failed: ${error.message}`);
+  } finally {
+    // Cleanup temporary directory
+    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+  }
+}
+
 // ===== Job Handlers =====
 
 async function executeJob(job) {
+  // Check if we have a custom handler for this job type
+  if (config.handlers && config.handlers[job.type] && config.handlers[job.type].enabled !== false) {
+    return await runCustomHandler(job);
+  }
+  
+  // Fall back to built-in handlers
   switch (job.type) {
     case 'inference': return await runInference(job.payload, getJobTimeout(job));
     case 'transcribe': return await runTranscribe(job.payload, getJobTimeout(job));
@@ -440,15 +569,77 @@ function handleWebSocketMessage(msg) {
   }
 }
 
+function checkResourceLimits() {
+  const sysInfo = getSystemInfo();
+  const cpuUsage = 100 - sysInfo.cpuIdle;
+  const ramUsage = ((sysInfo.ramMB - sysInfo.ramFreeMB) / sysInfo.ramMB) * 100;
+  
+  return {
+    cpuOk: cpuUsage <= config.limits.maxCpuPercent,
+    ramOk: ramUsage <= config.limits.maxRamPercent,
+    cpuUsage: Math.round(cpuUsage),
+    ramUsage: Math.round(ramUsage)
+  };
+}
+
+function isScheduleActive() {
+  if (!config.schedule.enabled) return true;
+  
+  const now = new Date();
+  const dayOfWeek = ['sun','mon','tue','wed','thu','fri','sat'][now.getDay()];
+  const timeStr = now.toTimeString().slice(0, 5); // HH:MM format
+  
+  for (const window of config.schedule.available || []) {
+    if (!window.days.includes(dayOfWeek)) continue;
+    
+    // Handle overnight schedules (end < start)
+    if (window.end < window.start) {
+      if (timeStr >= window.start || timeStr <= window.end) return true;
+    } else {
+      if (timeStr >= window.start && timeStr <= window.end) return true;
+    }
+  }
+  
+  return false;
+}
+
 function canTakeJob(job) {
   if (currentJob) return false;
   if (!job.requirements) return true;
   
+  // Check schedule
+  if (!isScheduleActive()) return false;
+  
+  // Check resource limits
+  const resources = checkResourceLimits();
+  if (!resources.cpuOk || !resources.ramOk) return false;
+  
   const reqs = typeof job.requirements === 'string' ? JSON.parse(job.requirements) : job.requirements;
   const caps = getCapabilities();
   
+  // Check capabilities
   if (reqs.capabilities) {
-    return reqs.capabilities.every(cap => caps.includes(cap));
+    if (!reqs.capabilities.every(cap => caps.includes(cap))) return false;
+  }
+  
+  // Check handler-specific requirements
+  if (config.handlers[job.type]) {
+    const handler = config.handlers[job.type];
+    
+    // Check if handler is enabled
+    if (handler.enabled === false) return false;
+    
+    // Check GPU requirements
+    if (handler.resources?.requiresGPU) {
+      const hasGPU = caps.some(cap => cap.includes('gpu'));
+      if (!hasGPU) return false;
+    }
+    
+    // Check file size limits
+    if (job.payload?.fileSize && handler.accepts?.maxInputSizeMB) {
+      const fileSizeMB = job.payload.fileSize / (1024 * 1024);
+      if (fileSizeMB > handler.accepts.maxInputSizeMB) return false;
+    }
   }
   
   return true;
@@ -493,12 +684,30 @@ async function checkin() {
   const sysInfo = getSystemInfo();
   const capabilities = getCapabilities();
   const models = getOllamaModels();
+  const resources = checkResourceLimits();
+  const scheduleActive = isScheduleActive();
 
   const result = await meshFetch('/nodes/register', {
     method: 'POST',
     body: JSON.stringify({
       nodeId, name: NODE_NAME, owner: NODE_OWNER, region: NODE_REGION,
-      capabilities, models, version: getLocalVersion(), ...sysInfo
+      capabilities, models, version: getLocalVersion(), 
+      ...sysInfo,
+      // Enhanced registration data
+      config: {
+        maxConcurrentJobs: config.limits.maxConcurrentJobs,
+        resourceLimits: config.limits,
+        scheduleEnabled: config.schedule.enabled,
+        scheduleActive,
+        pricingMultiplier: config.pricing.multiplier,
+        handlersEnabled: Object.keys(config.handlers || {}).filter(h => config.handlers[h].enabled !== false)
+      },
+      status: {
+        cpuUsage: resources.cpuUsage,
+        ramUsage: resources.ramUsage,
+        withinLimits: resources.cpuOk && resources.ramOk,
+        acceptingJobs: scheduleActive && resources.cpuOk && resources.ramOk
+      }
     })
   });
 
@@ -507,9 +716,15 @@ async function checkin() {
       nodeId = result.node.nodeId;
       saveNodeId(nodeId);
       console.log(`◉ Registered as node: ${nodeId}`);
-      console.log(`  Name: ${NODE_NAME} | Caps: ${capabilities.join(', ') || 'none'}`);
+      console.log(`  Name: ${NODE_NAME} | Owner: ${NODE_OWNER} | Region: ${NODE_REGION}`);
+      console.log(`  Caps: ${capabilities.join(', ') || 'none'}`);
       console.log(`  Models: ${models.join(', ') || 'none'}`);
       console.log(`  RAM: ${sysInfo.ramMB}MB (${sysInfo.ramFreeMB}MB free) | CPU: ${sysInfo.cpuCores}c ${sysInfo.cpuIdle}% idle`);
+      console.log(`  Status: ${scheduleActive ? 'Active' : 'Scheduled Off'} | CPU ${resources.cpuUsage}%/${config.limits.maxCpuPercent}% | RAM ${resources.ramUsage}%/${config.limits.maxRamPercent}%`);
+      if (Object.keys(config.handlers || {}).length > 0) {
+        const enabledHandlers = Object.keys(config.handlers).filter(h => config.handlers[h].enabled !== false);
+        console.log(`  Handlers: ${enabledHandlers.join(', ') || 'none enabled'}`);
+      }
     }
   }
 }
@@ -588,12 +803,25 @@ async function main() {
   console.log(`  Version: ${version}`);
   console.log(`  NodeID:  ${nodeId || '(new)'}`);
   
-  // Show configuration source
+  // Show configuration source and status
   const configSources = [];
   if (fs.existsSync(CONFIG_FILE)) configSources.push('config-file');
   if (process.env.IC_MESH_SERVER) configSources.push('env-vars');
   if (configSources.length === 0) configSources.push('defaults');
   console.log(`  Config:  ${configSources.join(' + ')}`);
+  
+  // Show configuration summary
+  if (Object.keys(config.handlers || {}).length > 0) {
+    const enabledHandlers = Object.keys(config.handlers).filter(h => config.handlers[h].enabled !== false);
+    console.log(`  Handlers: ${enabledHandlers.length}/${Object.keys(config.handlers).length} enabled`);
+  }
+  
+  if (config.schedule.enabled) {
+    console.log(`  Schedule: ${config.schedule.available?.length || 0} time windows (${config.schedule.timezone})`);
+    console.log(`  Currently: ${isScheduleActive() ? 'Active' : 'Scheduled Off'}`);
+  }
+  
+  console.log(`  Limits: ${config.limits.maxCpuPercent}% CPU, ${config.limits.maxRamPercent}% RAM, ${config.limits.maxConcurrentJobs} concurrent`);
   
   console.log('');
 
