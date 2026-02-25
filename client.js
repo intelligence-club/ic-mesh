@@ -127,6 +127,21 @@ if (fs.existsSync(CONFIG_FILE)) {
 const MESH_SERVER = process.env.IC_MESH_SERVER || config.meshServer;
 const NODE_NAME = process.env.IC_NODE_NAME || config.nodeName || os.hostname();
 const NODE_OWNER = process.env.IC_NODE_OWNER || config.nodeOwner || os.userInfo().username;
+
+// Validate node owner - prevent "unknown" nodes from registering
+if (!NODE_OWNER || NODE_OWNER === 'unknown' || NODE_OWNER.trim() === '') {
+  console.error('❌ Node owner validation failed!');
+  console.error('   Node owner cannot be empty or "unknown"');
+  console.error('');
+  console.error('   Fix this by setting one of:');
+  console.error('   1. Environment variable: IC_NODE_OWNER=yourname');
+  console.error('   2. Config file: { "nodeOwner": "yourname" }');
+  console.error('   3. Ensure os.userInfo().username returns valid name');
+  console.error('');
+  console.error(`   Current owner value: "${NODE_OWNER}"`);
+  process.exit(1);
+}
+
 const NODE_REGION = process.env.IC_NODE_REGION || config.nodeRegion;
 const CHECKIN_INTERVAL = config.checkinInterval;
 const JOB_POLL_INTERVAL = config.jobPollInterval;
@@ -1052,6 +1067,27 @@ async function checkin() {
       if (Object.keys(config.handlers || {}).length > 0) {
         const enabledHandlers = Object.keys(config.handlers).filter(h => config.handlers[h].enabled !== false);
         console.log(`  Handlers: ${enabledHandlers.join(', ') || 'none enabled'}`);
+      }
+      
+      // First-job guarantee for new nodes - request a ping test job to verify connectivity
+      if (capabilities.includes('ping')) {
+        setTimeout(async () => {
+          console.log('  ◉ Requesting initial capability test job...');
+          try {
+            await meshFetch('/jobs', {
+              method: 'POST',
+              body: JSON.stringify({
+                type: 'ping',
+                payload: { message: `First job test for ${NODE_NAME}` },
+                clientIp: '127.0.0.1',
+                priority: 'high'
+              })
+            });
+            console.log('  ✅ Initial test job submitted');
+          } catch (err) {
+            console.log(`  ⚠️  Could not submit test job: ${err.message}`);
+          }
+        }, 2000); // Wait 2s for full registration to complete
       }
     }
   }
