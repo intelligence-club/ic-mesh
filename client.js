@@ -536,17 +536,62 @@ async function runInference(payload, timeoutMs) {
   const model = payload.model || 'llama3.1:8b';
   const prompt = payload.prompt || '';
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // Use streaming to avoid timeout on slow models — each chunk resets our activity timer
     const resp = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, prompt, stream: false }),
+      body: JSON.stringify({ model, prompt, stream: true }),
       signal: controller.signal
     });
-    const data = await resp.json();
-    return { response: data.response, model, tokens: data.eval_count || 0 };
+    
+    if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`);
+    
+    let fullResponse = '';
+    let tokens = 0;
+    let lastProgress = Date.now();
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const chunk = JSON.parse(line);
+          if (chunk.response) fullResponse += chunk.response;
+          if (chunk.eval_count) tokens = chunk.eval_count;
+          
+          // Report progress every 3s
+          if (Date.now() - lastProgress > 3000 && currentJobId) {
+            const wordCount = fullResponse.split(/\s+/).filter(Boolean).length;
+            try {
+              await fetch(`${MESH_SERVER}/jobs/${currentJobId}/progress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pct: chunk.done ? 100 : 50, step: wordCount, steps: 0, eta: null, nodeId })
+              });
+            } catch {}
+            lastProgress = Date.now();
+          }
+          
+          // Reset timeout on each chunk — model is alive
+          clearTimeout(timer);
+          timer = setTimeout(() => controller.abort(), 120000);
+        } catch {}
+      }
+    }
+    
+    return { response: fullResponse, model, tokens };
   } catch (e) {
     throw new Error(e.name === 'AbortError' ? `Inference timeout (${Math.round(timeoutMs/1000)}s)` : `Ollama failed: ${e.message}`);
   } finally { clearTimeout(timer); }
