@@ -32,6 +32,24 @@ const { WebSocketServer, WebSocket } = require('ws');
 const storage = require('./lib/storage');
 const connect = require('./lib/stripe-connect');
 
+// ===== ERROR HANDLING UTILITIES =====
+function logError(context, error, details = {}) {
+  console.error(`[ERROR] ${context}:`, {
+    message: error.message,
+    stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+    ...details
+  });
+}
+
+function safeJsonParse(str, defaultValue = {}, context = 'unknown') {
+  try {
+    return JSON.parse(str || '{}');
+  } catch (e) {
+    logError(`JSON parse in ${context}`, e, { input: str?.substring(0, 100) });
+    return defaultValue;
+  }
+}
+
 const PORT = process.env.PORT || 8333;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
@@ -251,7 +269,12 @@ function migrateFromJSON() {
           } else if (j.status === 'claimed') {
             stmts.claimJob.run(j.claimedBy, j.claimedAt, j.jobId);
           }
-        } catch(e) {} // skip dupes
+        } catch(e) {
+          // Skip duplicates during migration, but log other errors
+          if (!e.message.includes('UNIQUE constraint failed')) {
+            logError('Job migration', e, { jobId: j.jobId });
+          }
+        }
       }
       console.log(`  Migrated ${Object.keys(jobs).length} jobs from JSON`);
     }
@@ -392,10 +415,8 @@ function completeJob(jobId, nodeId, result) {
   
   // Parse job payload to get price_ints if set by the payment system
   let priceInts = 0;
-  try {
-    const payload = JSON.parse(job.payload || '{}');
-    priceInts = parseInt(payload.price_ints) || 0;
-  } catch(e) {}
+  const payload = safeJsonParse(job.payload, {}, 'job completion payload');
+  priceInts = parseInt(payload.price_ints) || 0;
   
   // Revenue split: 80% node, 15% treasury, 5% infra (all integer ints)
   const nodeCut = Math.floor(priceInts * 80 / 100);
@@ -445,7 +466,9 @@ function setupWebSocket(server) {
       try {
         const msg = JSON.parse(data);
         handleWsMessage(nodeId, msg, ws);
-      } catch(e) {}
+      } catch(e) {
+        logError('WebSocket message parsing', e, { nodeId, data: data.toString().substring(0, 100) });
+      }
     });
     
     ws.on('close', () => {
@@ -453,7 +476,10 @@ function setupWebSocket(server) {
       console.log(`  ⚡ WS disconnected: ${nodeId} (${wsClients.size} total)`);
     });
     
-    ws.on('error', () => wsClients.delete(nodeId));
+    ws.on('error', (error) => {
+      logError('WebSocket connection', error, { nodeId });
+      wsClients.delete(nodeId);
+    });
     
     // Send pending jobs immediately
     const available = getAvailableJobs(nodeId);
@@ -592,6 +618,10 @@ const server = http.createServer(async (req, res) => {
           }
           json(res, { error: 'Could not parse upload' }, 400);
         } catch(e) {
+          logError('File upload processing', e, { 
+            contentType: req.headers['content-type'], 
+            size: Buffer.concat(chunks).length 
+          });
           json(res, { error: e.message }, 500);
         }
       });
@@ -1180,7 +1210,11 @@ const server = http.createServer(async (req, res) => {
     json(res, { error: 'not found' }, 404);
     
   } catch (e) {
-    console.error('Error:', e);
+    logError('HTTP request handler', e, { 
+      method, 
+      pathname, 
+      userAgent: req.headers['user-agent']?.substring(0, 50)
+    });
     json(res, { error: e.message }, 500);
   }
 });
@@ -1466,7 +1500,9 @@ setInterval(async () => {
   try {
     const deleted = await storage.cleanupExpired();
     if (deleted > 0) console.log(`  🧹 Cleaned up ${deleted} expired uploads`);
-  } catch(e) {}
+  } catch(e) {
+    logError('Upload cleanup', e);
+  }
 }, 3600000);
 
 server.listen(PORT, '0.0.0.0', () => {
