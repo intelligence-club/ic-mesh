@@ -269,6 +269,105 @@ main().catch(e => {
 });
 ```
 
+### Example: OCR Handler (Python)
+
+```python
+#!/usr/bin/env python3
+"""handlers/ocr.py — Tesseract OCR handler"""
+
+import json, sys, subprocess, os
+
+def main():
+    job = json.load(sys.stdin)
+    payload = job.get("payload", {})
+    work_dir = job.get("workDir", "/tmp")
+    input_files = job.get("inputFiles", [])
+    
+    if not input_files:
+        print(json.dumps({"success": False, "error": "No input file"}))
+        return
+    
+    image_path = input_files[0]
+    language = payload.get("language", "eng")
+    output_format = payload.get("format", "txt")
+    
+    # Run Tesseract OCR
+    output_base = os.path.join(work_dir, "output", "ocr_result")
+    os.makedirs(os.path.dirname(output_base), exist_ok=True)
+    
+    cmd = ["tesseract", image_path, output_base, "-l", language]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        
+        if result.returncode != 0:
+            print(json.dumps({"success": False, "error": result.stderr}))
+            return
+        
+        # Read extracted text
+        with open(f"{output_base}.txt", 'r', encoding='utf-8') as f:
+            text = f.read().strip()
+        
+        print(json.dumps({
+            "success": True,
+            "data": {
+                "text": text,
+                "language": language,
+                "format": output_format,
+                "character_count": len(text)
+            },
+            "outputFiles": [f"{output_base}.txt"]
+        }))
+        
+    except subprocess.TimeoutExpired:
+        print(json.dumps({"success": False, "error": "OCR timeout"}))
+    except Exception as e:
+        print(json.dumps({"success": False, "error": str(e)}))
+
+if __name__ == "__main__":
+    main()
+```
+
+**Configuration example:**
+
+```json
+{
+  "handlers": {
+    "ocr": {
+      "command": "python3 handlers/ocr.py",
+      "description": "Optical Character Recognition via Tesseract",
+      "accepts": {
+        "mimeTypes": ["image/*"],
+        "maxInputSizeMB": 10
+      },
+      "resources": {
+        "timeout": 120,
+        "maxConcurrent": 2,
+        "cpuWeight": "medium"
+      }
+    }
+  }
+}
+```
+
+**Usage example:**
+
+```bash
+# Extract text from image
+curl -X POST https://moilol.com/mesh/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "ocr",
+    "payload": {
+      "url": "https://example.com/document.png",
+      "language": "eng",
+      "format": "txt",
+      "confidence": true
+    },
+    "requirements": {"capability": "ocr"}
+  }'
+```
+
 ---
 
 ## Client Execution Flow
@@ -366,10 +465,11 @@ That's it. Your handler is now a service on the mesh.
 | Handler | File | Description |
 |---------|------|-------------|
 | `ping` | (built-in) | Health check, always available |
-| `transcribe` | `handlers/transcribe.py` | Whisper transcription |
+| `transcribe` | `handlers/transcribe.sh` | Whisper transcription |
 | `generate` | `handlers/generate-image.js` | Stable Diffusion image gen |
 | `inference` | `handlers/inference.js` | Ollama LLM inference |
 | `ffmpeg` | `handlers/ffmpeg.sh` | Generic ffmpeg processing |
+| `ocr` | `handlers/ocr.py` | Optical Character Recognition via Tesseract |
 
 These ship as examples. Operators can modify, disable, or replace them.
 

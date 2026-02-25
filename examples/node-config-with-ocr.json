@@ -1,0 +1,72 @@
+{
+  "name": "example-node",
+  "owner": "node-operator",
+  "region": "us-east",
+  "maxConcurrentJobs": 4,
+  "capabilities": {
+    "whisper": true,
+    "ollama": false,
+    "stable-diffusion": false,
+    "ffmpeg": true,
+    "tesseract": true
+  },
+  "handlers": {
+    "transcribe": {
+      "command": "bash handlers/transcribe.sh",
+      "description": "Audio/video transcription via Whisper",
+      "accepts": {
+        "mimeTypes": ["audio/*", "video/*"],
+        "maxInputSizeMB": 100
+      },
+      "resources": {
+        "timeout": 600,
+        "maxConcurrent": 1,
+        "cpuWeight": "high",
+        "requiresGPU": false
+      },
+      "env": {
+        "WHISPER_MODEL": "base"
+      }
+    },
+    "ffmpeg": {
+      "command": "bash handlers/ffmpeg.sh",
+      "description": "Generic media processing via ffmpeg",
+      "accepts": {
+        "mimeTypes": ["audio/*", "video/*"],
+        "maxInputSizeMB": 200
+      },
+      "resources": {
+        "timeout": 300,
+        "maxConcurrent": 2,
+        "cpuWeight": "medium"
+      }
+    },
+    "ocr": {
+      "command": "python3 handlers/ocr.py",
+      "description": "Optical Character Recognition via Tesseract with multi-language support",
+      "accepts": {
+        "mimeTypes": ["image/*", "application/pdf"],
+        "maxInputSizeMB": 25
+      },
+      "resources": {
+        "timeout": 120,
+        "maxConcurrent": 3,
+        "cpuWeight": "medium",
+        "requiresGPU": false
+      },
+      "env": {
+        "TESSDATA_PREFIX": "/usr/share/tesseract-ocr/5/tessdata"
+      }
+    }
+  },
+  "schedule": {
+    "enabled": true,
+    "allowedHours": "0-23",
+    "timezone": "America/New_York"
+  },
+  "resources": {
+    "maxCpuPercent": 80,
+    "maxRamMB": 2048,
+    "diskSpaceGB": 10
+  }
+}

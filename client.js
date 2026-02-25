@@ -204,6 +204,7 @@ function getCapabilities() {
   if (which('ollama')) caps.push('ollama');
   if (which('whisper')) caps.push('whisper');
   if (which('ffmpeg')) caps.push('ffmpeg');
+  if (which('tesseract')) caps.push('tesseract');
   if (which('nvidia-smi')) caps.push('gpu-nvidia');
 
   try {

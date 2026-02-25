@@ -18,6 +18,7 @@ A distributed compute mesh that connects idle hardware into a shared network. Tr
 | 🎨 Image Generation | ~50 ints/image | Stable Diffusion on local GPUs |
 | 🧠 AI Inference | ~10 ints/request | Ollama (Llama, Mistral, etc.) |
 | 🎬 Media Processing | ~20 ints/min | ffmpeg on mesh nodes |
+| 📄 OCR Text Extraction | ~5 ints/page | Tesseract on mesh nodes |
 
 _1,000 ints = $1.00 USD. Buy ints with credit card, earn ints by contributing compute, cash out via Stripe Connect._
 
@@ -29,7 +30,7 @@ Got a Mac, a PC, a spare server? Put it to work.
 git clone https://github.com/intelligence-club/ic-mesh.git
 cd ic-mesh
 
-IC_MESH_SERVER=https://moilol.com:8333 \
+IC_MESH_HUB=https://moilol.com/mesh \
 IC_NODE_NAME=your-node-name \
 IC_NODE_OWNER=your-name \
 node client.js
@@ -94,9 +95,48 @@ curl -X POST https://moilol.com/mesh/jobs \
     "requirements": {"capability": "stable-diffusion"}
   }'
 
+# Extract text from image
+curl -X POST https://moilol.com/mesh/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "ocr",
+    "payload": {"url": "https://example.com/document.png", "language": "eng"},
+    "requirements": {"capability": "ocr"}
+  }'
+
 # Check result
 curl https://moilol.com/mesh/jobs/<jobId>
 ```
+
+## Payments & Operator Payouts
+
+```bash
+# Buy ints (consumer) — returns Stripe Checkout URL
+curl -X POST https://moilol.com/api/buy-credits \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@email.com", "amount": 5000}'
+
+# Check balance
+curl https://moilol.com/api/balance?email=you@email.com
+
+# Operator: set up Stripe Connect payouts
+curl -X POST https://moilol.com/mesh/nodes/onboard \
+  -H "Content-Type: application/json" \
+  -d '{"nodeId": "YOUR_NODE_ID", "email": "you@email.com", "country": "US"}'
+
+# Operator: cash out earnings
+curl -X POST https://moilol.com/mesh/cashout \
+  -H "Content-Type: application/json" \
+  -d '{"nodeId": "YOUR_NODE_ID"}'
+
+# Check earnings & cashout history
+curl https://moilol.com/mesh/payouts/YOUR_NODE_ID
+curl https://moilol.com/mesh/cashouts/YOUR_NODE_ID
+```
+
+**Web UI**: [moilol.com/use.html](https://moilol.com/use.html) — submit any job type via browser  
+**Operator onboarding**: [moilol.com/onboard.html](https://moilol.com/onboard.html) — wizard for new operators  
+**Operator dashboard**: [moilol.com/operator.html](https://moilol.com/operator.html) — track earnings & cashout
 
 ## Economics
 

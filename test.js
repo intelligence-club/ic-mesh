@@ -663,6 +663,23 @@ suite.test('Content-Type validation', async () => {
   suite.assert(res2.status === 200 || res2.status >= 400, 'Should handle wrong Content-Type');
 });
 
+suite.test('OCR handler availability check', async () => {
+  // Test OCR job creation to ensure handler is recognized
+  const ocrJob = {
+    type: 'ocr',
+    payload: {
+      language: 'eng',
+      format: 'txt'
+    },
+    requirements: { capability: 'ocr' }
+  };
+  
+  const res = await suite.request('POST', '/jobs', ocrJob);
+  suite.assertEqual(res.status, 200, 'Should accept OCR job creation');
+  suite.assert(res.data.job, 'Should return job object');
+  suite.assertEqual(res.data.job.type, 'ocr', 'Job type should be OCR');
+});
+
 // Run tests if this file is executed directly
 if (require.main === module) {
   suite.run();

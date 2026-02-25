@@ -403,15 +403,40 @@ Output of step N feeds into step N+1. Each step can run on a different node.
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/status` | Network status |
+| **Nodes** | | |
 | POST | `/nodes/register` | Register node |
 | GET | `/nodes` | List active nodes |
+| POST | `/nodes/onboard` | Create Stripe Express account → returns onboarding URL |
+| GET | `/nodes/:id/stripe` | Check Stripe onboarding status |
+| **Jobs** | | |
 | POST | `/jobs` | Submit job |
 | GET | `/jobs/:id` | Get job status/result |
 | GET | `/jobs/available` | Poll for available jobs |
 | POST | `/jobs/:id/claim` | Claim a job |
 | POST | `/jobs/:id/complete` | Report completion |
+| **Earnings & Payouts** | | |
 | GET | `/ledger/:nodeId` | Get compute balance |
-| GET | `/status` | Network status |
+| GET | `/payouts` | All operator earnings |
+| GET | `/payouts/:nodeId` | Single operator earnings |
+| POST | `/cashout` | Operator cashout → Stripe Connect transfer |
+| GET | `/cashouts/:nodeId` | Cashout history + Stripe transfer details |
+
+All mesh endpoints are served at `https://moilol.com/mesh/...` (proxied to port 8333).
+
+#### Site API (served directly on moilol.com)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/buy-credits` | Buy ints via Stripe Checkout (`{"email","amount":5000}`) |
+| GET | `/api/balance?email=` | Check int balance + transaction history |
+| POST | `/api/auth/send-code` | Email login code |
+| POST | `/api/auth/verify-code` | Verify code → session cookie |
+| GET | `/api/auth/me` | Current session |
+| POST | `/api/auth/keys` | Get/generate API key |
+| POST | `/api/transcribe` | Machine API: submit transcription (Bearer auth) |
+| GET | `/api/jobs/:token` | Job status + result |
+| POST | `/stripe/webhook` | Stripe payment webhook (signature verified) |
 
 ---
 
