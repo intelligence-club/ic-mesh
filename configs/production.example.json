@@ -1,0 +1,230 @@
+{
+  "_comment": "Production configuration for IC Mesh node",
+  "_usage": "cp configs/production.example.json node-config.json && edit node details",
+  "_security": "Review all settings before deployment - this config prioritizes security and stability",
+  
+  "node": {
+    "name": "prod-node-01",
+    "owner": "your-organization",
+    "region": "us-east-1",
+    "description": "Production compute node",
+    "tags": ["production", "high-availability"]
+  },
+  
+  "server": {
+    "url": "https://moilol.com:8333",
+    "reconnectInterval": 30000,
+    "heartbeatInterval": 60000,
+    "connectionTimeout": 15000,
+    "requestTimeout": 30000,
+    "enableTLS": true,
+    "verifyTLS": true
+  },
+  
+  "logging": {
+    "level": "info",
+    "enableVerbose": false,
+    "logToFile": true,
+    "logFile": "logs/mesh-client.log",
+    "logRotation": {
+      "enabled": true,
+      "maxSize": "100MB",
+      "maxFiles": 10
+    },
+    "remoteLogging": {
+      "enabled": false,
+      "endpoint": "https://logs.example.com/api/logs",
+      "apiKey": "${LOG_API_KEY}"
+    }
+  },
+  
+  "handlers": {
+    "transcribe": {
+      "command": "bash handlers/transcribe.sh",
+      "description": "High-quality audio transcription",
+      "enabled": true,
+      "accepts": { 
+        "mimeTypes": ["audio/wav", "audio/mp3", "audio/m4a", "video/mp4"],
+        "maxInputSizeMB": 100
+      },
+      "resources": { 
+        "timeout": 900, 
+        "maxConcurrent": 2, 
+        "cpuWeight": "high",
+        "memoryLimitMB": 2048
+      },
+      "env": { 
+        "WHISPER_MODEL": "medium",
+        "WHISPER_DEVICE": "cuda",
+        "TMPDIR": "/var/tmp/whisper"
+      },
+      "security": {
+        "sandboxed": true,
+        "allowedOutputFormats": ["json", "txt", "srt"],
+        "maxProcessingTime": 900
+      }
+    },
+    
+    "inference": {
+      "command": "node handlers/inference.js", 
+      "description": "LLM inference with GPU acceleration",
+      "enabled": true,
+      "accepts": {
+        "maxInputLength": 4000,
+        "supportedModels": ["llama2", "mistral", "codellama"]
+      },
+      "resources": { 
+        "timeout": 300, 
+        "maxConcurrent": 3,
+        "requiresGPU": true,
+        "memoryLimitMB": 8192
+      },
+      "env": { 
+        "OLLAMA_URL": "http://localhost:11434",
+        "CUDA_VISIBLE_DEVICES": "0",
+        "OLLAMA_MAX_LOADED_MODELS": "2"
+      },
+      "security": {
+        "inputSanitization": true,
+        "contentFiltering": true,
+        "rateLimit": {
+          "requestsPerMinute": 60,
+          "tokensPerHour": 100000
+        }
+      }
+    },
+    
+    "ffmpeg": {
+      "command": "bash handlers/ffmpeg.sh",
+      "description": "Professional media processing",
+      "enabled": true,
+      "accepts": { 
+        "mimeTypes": ["audio/*", "video/*"],
+        "maxInputSizeMB": 500
+      },
+      "resources": { 
+        "timeout": 1800, 
+        "maxConcurrent": 2,
+        "cpuWeight": "high",
+        "memoryLimitMB": 4096
+      },
+      "env": {
+        "FFMPEG_PRESET": "medium",
+        "HARDWARE_ACCEL": "cuda"
+      },
+      "security": {
+        "allowedFormats": ["mp4", "mp3", "wav", "webm"],
+        "maxOutputSize": "1GB",
+        "preventFileOverwrite": true
+      }
+    },
+    
+    "ocr": {
+      "command": "python3 handlers/ocr.py",
+      "description": "OCR with multiple language support",
+      "enabled": true,
+      "accepts": {
+        "mimeTypes": ["image/jpeg", "image/png", "image/tiff", "application/pdf"],
+        "maxInputSizeMB": 50
+      },
+      "resources": {
+        "timeout": 600,
+        "maxConcurrent": 3,
+        "memoryLimitMB": 1024
+      },
+      "env": {
+        "TESSDATA_PREFIX": "/usr/share/tesseract-ocr/4.00/tessdata",
+        "OMP_NUM_THREADS": "4"
+      }
+    }
+  },
+  
+  "limits": {
+    "maxCpuPercent": 85,
+    "maxRamPercent": 80,
+    "maxConcurrentJobs": 6,
+    "maxFileSizeMB": 500,
+    "maxDiskUsageGB": 50
+  },
+  
+  "security": {
+    "enableSandboxing": true,
+    "restrictNetworkAccess": true,
+    "allowedDomains": ["moilol.com", "api.openai.com"],
+    "enableFileSystemProtection": true,
+    "maxFileDescriptors": 1024,
+    "enableResourceLimits": true
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metricsPort": 9090,
+    "healthCheckPort": 8080,
+    "enablePrometheus": true,
+    "alerting": {
+      "enabled": true,
+      "webhookUrl": "${ALERT_WEBHOOK_URL}",
+      "thresholds": {
+        "cpuPercent": 90,
+        "memoryPercent": 85,
+        "diskPercent": 80,
+        "errorRate": 0.05
+      }
+    }
+  },
+  
+  "schedule": {
+    "enabled": true,
+    "timezone": "UTC",
+    "available": [
+      { 
+        "days": ["mon","tue","wed","thu","fri"], 
+        "start": "00:00", 
+        "end": "23:59" 
+      },
+      { 
+        "days": ["sat","sun"], 
+        "start": "06:00", 
+        "end": "22:00" 
+      }
+    ],
+    "maintenance": {
+      "days": ["sun"],
+      "start": "04:00",
+      "end": "06:00",
+      "description": "Weekly maintenance window"
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "interval": "daily",
+    "retentionDays": 30,
+    "backupPath": "/var/backups/ic-mesh",
+    "compression": true
+  },
+  
+  "performance": {
+    "enableCaching": true,
+    "cacheSize": "1GB",
+    "enableCompression": true,
+    "enableBatching": true,
+    "batchSize": 10,
+    "enablePipelining": true
+  },
+  
+  "pricing": {
+    "multiplier": 1.0,
+    "premiumMultiplier": 1.5,
+    "bulkDiscountThreshold": 100,
+    "bulkDiscountRate": 0.9
+  },
+  
+  "compliance": {
+    "enableAuditLogging": true,
+    "auditLogPath": "logs/audit.log",
+    "dataRetentionDays": 90,
+    "enablePrivacyMode": false,
+    "complianceLevel": "standard"
+  }
+}
