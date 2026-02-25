@@ -415,15 +415,49 @@ async function runCustomHandler(job) {
     });
     
     // Try to parse output as JSON, fall back to plain text
+    let result;
     try {
-      return JSON.parse(output.trim());
+      result = JSON.parse(output.trim());
     } catch {
-      return { 
-        success: true, 
-        output: output.trim(),
-        handler: job.type
-      };
+      result = { success: true, output: output.trim(), handler: job.type };
     }
+
+    // Upload output files back to mesh server so consumers can download them
+    if (result.outputFiles && Array.isArray(result.outputFiles)) {
+      const uploadedUrls = [];
+      for (const filePath of result.outputFiles) {
+        if (fs.existsSync(filePath)) {
+          try {
+            const fileName = path.basename(filePath);
+            const fileData = fs.readFileSync(filePath);
+            const boundary = '----ICMeshUpload' + Date.now();
+            const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+            const footer = `\r\n--${boundary}--\r\n`;
+            const body = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
+            
+            const uploadRes = await fetch(`${MESH_URL}/upload`, {
+              method: 'POST',
+              headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+              body
+            });
+            const uploadData = await uploadRes.json();
+            if (uploadData.ok && uploadData.url) {
+              uploadedUrls.push(uploadData.url);
+              console.log(`  ↑ Uploaded output: ${fileName} → ${uploadData.url}`);
+            }
+          } catch (e) {
+            console.log(`  ⚠ Failed to upload ${filePath}: ${e.message}`);
+          }
+        }
+      }
+      if (uploadedUrls.length > 0) {
+        result.output_url = uploadedUrls[0];
+        result.outputUrls = uploadedUrls;
+        delete result.outputFiles; // Remove local paths from result
+      }
+    }
+
+    return result;
   } catch (error) {
     throw new Error(`Handler ${job.type} failed: ${error.message}`);
   } finally {
