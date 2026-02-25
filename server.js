@@ -688,6 +688,14 @@ const server = http.createServer(async (req, res) => {
     // ---- Job Queue ----
     if (method === 'POST' && pathname === '/jobs') {
       const data = await parseBody(req);
+      // Validate job type
+      const VALID_JOB_TYPES = ['transcribe', 'generate-image', 'ffmpeg', 'inference', 'ocr', 'pdf-extract'];
+      if (!data.type || !VALID_JOB_TYPES.includes(data.type)) {
+        return json(res, { error: `Invalid job type. Must be one of: ${VALID_JOB_TYPES.join(', ')}`, valid_types: VALID_JOB_TYPES }, 400);
+      }
+      if (!data.payload || typeof data.payload !== 'object') {
+        return json(res, { error: 'payload object required' }, 400);
+      }
       const job = submitJob(data);
       return json(res, { ok: true, job });
     }
@@ -1252,7 +1260,11 @@ const server = http.createServer(async (req, res) => {
       pathname, 
       userAgent: req.headers['user-agent']?.substring(0, 50)
     });
-    json(res, { error: e.message }, 500);
+    // Don't leak internal errors to clients
+    const safeMsg = e.message?.includes('constraint') || e.message?.includes('SQLITE') || e.message?.includes('database')
+      ? 'Internal server error'
+      : e.message || 'Internal server error';
+    json(res, { error: safeMsg }, 500);
   }
 });
 
