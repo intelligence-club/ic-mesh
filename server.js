@@ -186,6 +186,10 @@ const stmts = {
   
   // Ticket system
   getTicket: db.prepare('SELECT * FROM tickets WHERE id = ?'),
+  insertTicket: db.prepare(`
+    INSERT INTO tickets (id, email, api_key, category, priority, subject, body, job_id, status, created)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', datetime('now'))
+  `),
   markJobRefunded: db.prepare("UPDATE jobs SET refunded = 1 WHERE jobId = ?")
 };
 
@@ -873,6 +877,44 @@ const server = http.createServer(async (req, res) => {
     }
     
     // ---- Support Ticket System ----
+    if (method === 'POST' && pathname === '/support') {
+      const data = await parseBody(req);
+      const { email, subject, body, category, priority, api_key, job_id } = data;
+      
+      // Validate required fields
+      if (!email || !subject || !body) {
+        return json(res, { error: 'Missing required fields: email, subject, body' }, 400);
+      }
+      
+      // Generate ticket ID
+      const ticketId = 'TK-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+      
+      try {
+        // Insert ticket into database
+        stmts.insertTicket.run(
+          ticketId,
+          email,
+          api_key || null,
+          category || 'general',
+          priority || 'normal',
+          subject,
+          body,
+          job_id || null
+        );
+        
+        console.log(`🎫 Support ticket created: ${ticketId} from ${email}`);
+        
+        return json(res, {
+          success: true,
+          ticket_id: ticketId,
+          message: 'Support ticket created successfully. We will respond within 24 hours.',
+          status: 'open'
+        });
+      } catch (error) {
+        console.error('Failed to create support ticket:', error);
+        return json(res, { error: 'Failed to create support ticket' }, 500);
+      }
+    }
     if (method === 'POST' && pathname === '/api/support') {
       const data = await parseBody(req);
       const { email, api_key, category, subject, body, job_id, priority } = data;
