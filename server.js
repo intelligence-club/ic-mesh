@@ -393,6 +393,19 @@ function submitJob(data) {
   return jobToJSON(stmts.getJob.get(id));
 }
 
+// Capability alias mapping to handle naming variations
+function aliasCapability(capability) {
+  const aliases = {
+    'transcription': 'whisper',
+    'transcribe': 'whisper', 
+    'ocr': 'tesseract',
+    'pdf-extract': 'tesseract',
+    'inference': 'ollama',
+    'generate-image': 'stable-diffusion'
+  };
+  return aliases[capability] || capability;
+}
+
 function getAvailableJobs(nodeId) {
   const pending = stmts.getPendingJobs.all();
   const node = stmts.getNode.get(nodeId);
@@ -401,7 +414,10 @@ function getAvailableJobs(nodeId) {
   
   return pending.filter(row => {
     const req = JSON.parse(row.requirements || '{}');
-    if (req.capability && !nodeCaps.includes(req.capability)) return false;
+    if (req.capability) {
+      const requiredCap = aliasCapability(req.capability);
+      if (!nodeCaps.includes(requiredCap)) return false;
+    }
     if (req.model && !nodeModels.includes(req.model)) return false;
     if (req.minRAM && node && node.ramFreeMB < req.minRAM) return false;
     return true;
@@ -416,11 +432,13 @@ function claimJob(jobId, nodeId) {
   if (req.capability) {
     const node = stmts.getNode.get(nodeId);
     const caps = node ? JSON.parse(node.capabilities || '[]') : [];
-    if (!caps.includes(req.capability)) {
+    const requiredCap = aliasCapability(req.capability);
+    if (!caps.includes(requiredCap)) {
       logger.job('Claim rejected', jobId.slice(0, 8), {
         nodeId: nodeId.slice(0, 8),
         reason: 'missing_capability',
         requiredCapability: req.capability,
+        aliasedCapability: requiredCap,
         nodeCapabilities: caps
       });
       return null;
@@ -565,7 +583,10 @@ function broadcastToEligibleNodes(job) {
     const node = stmts.getNode.get(nodeId);
     if (!node) continue;
     const caps = JSON.parse(node.capabilities || '[]');
-    if (req.capability && !caps.includes(req.capability)) continue;
+    if (req.capability) {
+      const requiredCap = aliasCapability(req.capability);
+      if (!caps.includes(requiredCap)) continue;
+    }
     ws.send(JSON.stringify({ type: 'job.dispatch', job }));
   }
 }
