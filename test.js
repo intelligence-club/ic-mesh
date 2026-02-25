@@ -80,7 +80,21 @@ class TestSuite {
         });
       });
 
-      req.on('error', reject);
+      req.on('error', async (err) => {
+        // Retry connection errors (ECONNREFUSED, etc.) with exponential backoff
+        if ((err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') && retries < 3) {
+          const delay = Math.pow(2, retries) * 200; // 200ms, 400ms, 800ms
+          await new Promise(resolve => setTimeout(resolve, delay));
+          try {
+            const retryResult = await this.request(method, path, data, headers, retries + 1);
+            resolve(retryResult);
+          } catch (retryError) {
+            reject(retryError);
+          }
+          return;
+        }
+        reject(err);
+      });
       
       if (data) {
         req.write(typeof data === 'string' ? data : JSON.stringify(data));
@@ -195,26 +209,38 @@ suite.test('WebSocket connection works', async () => {
 });
 
 suite.test('Invalid endpoints return 404', async () => {
-  const res = await suite.request('GET', '/nonexistent');
-  suite.assertEqual(res.status, 404, 'Should return 404 for invalid endpoint');
+  try {
+    const res = await suite.request('GET', '/nonexistent');
+    suite.assertEqual(res.status, 404, `Should return 404 for invalid endpoint, got ${res.status}: ${JSON.stringify(res.data)}`);
+  } catch (error) {
+    throw new Error(`Test failed with: ${error.message}. Stack: ${error.stack}`);
+  }
 });
 
 // ===== EXPANDED TEST COVERAGE =====
 
 suite.test('POST /jobs validates required fields', async () => {
-  const res = await suite.request('POST', '/jobs', {});
-  suite.assert(res.status >= 400, 'Should return error for missing required fields');
+  try {
+    const res = await suite.request('POST', '/jobs', {});
+    suite.assert(res.status >= 400, `Should return error for missing required fields, got ${res.status}: ${JSON.stringify(res.data)}`);
+  } catch (error) {
+    throw new Error(`Test failed with: ${error.message}. Stack: ${error.stack}`);
+  }
 });
 
 suite.test('POST /jobs with invalid task type', async () => {
-  const jobData = {
-    type: 'invalid-task-type',
-    payload: { test: 'data' },
-    requirements: { capability: 'invalid' }
-  };
-  const res = await suite.request('POST', '/jobs', jobData);
-  // Note: API might accept any type, so this test validates the request completes
-  suite.assert(res.status === 200 || res.status >= 400, 'Should handle invalid task types');
+  try {
+    const jobData = {
+      type: 'invalid-task-type',
+      payload: { test: 'data' },
+      requirements: { capability: 'invalid' }
+    };
+    const res = await suite.request('POST', '/jobs', jobData);
+    // Note: API might accept any type, so this test validates the request completes
+    suite.assert(res.status === 200 || res.status >= 400, `Should handle invalid task types, got ${res.status}: ${JSON.stringify(res.data)}`);
+  } catch (error) {
+    throw new Error(`Test failed with: ${error.message}. Stack: ${error.stack}`);
+  }
 });
 
 suite.test('Job claiming workflow', async () => {
