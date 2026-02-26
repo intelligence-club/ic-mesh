@@ -489,9 +489,17 @@ class SystemHealthValidator {
     const recommendations = [];
     let score = 100;
 
-    // CPU usage check
-    const cpuUsage = process.cpuUsage();
-    const cpuPercent = (cpuUsage.user + cpuUsage.system) / 1000000; // Convert to seconds
+    // CPU usage check - sample over 1 second for accurate percentage
+    const startUsage = process.cpuUsage();
+    const startTime = process.hrtime();
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const endUsage = process.cpuUsage(startUsage);
+    const endTime = process.hrtime(startTime);
+    
+    const elapsedMicroseconds = endTime[0] * 1000000 + endTime[1] / 1000;
+    const cpuPercent = ((endUsage.user + endUsage.system) / elapsedMicroseconds) * 100;
     
     console.log(`CPU usage: ${cpuPercent.toFixed(2)}%`);
 
