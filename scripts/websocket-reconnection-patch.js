@@ -90,11 +90,36 @@ function resetReconnection() {
     reconnectionTimeout = null;
   }
 }
+
+async function calculateCpuIdle() {
+  const os = require('os');
+  
+  // Get initial CPU times
+  const cpus1 = os.cpus();
+  const idle1 = cpus1.reduce((sum, cpu) => sum + cpu.times.idle, 0);
+  const total1 = cpus1.reduce((sum, cpu) => 
+    sum + cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq, 0);
+  
+  // Wait 100ms for measurement
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // Get updated CPU times
+  const cpus2 = os.cpus();
+  const idle2 = cpus2.reduce((sum, cpu) => sum + cpu.times.idle, 0);
+  const total2 = cpus2.reduce((sum, cpu) => 
+    sum + cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq, 0);
+  
+  // Calculate idle percentage
+  const idleDiff = idle2 - idle1;
+  const totalDiff = total2 - total1;
+  
+  return Math.round((idleDiff / totalDiff) * 100);
+}
 `;
 
   // Patch WebSocket connection logic
   const originalConnectPattern = /ws\.on\('open'.*?\}\);/s;
-  const patchedConnect = `ws.on('open', function() {
+  const patchedConnect = `ws.on('open', async function() {
     console.log('✅ Connected to Intelligence Club Mesh');
     resetReconnection();
     startHeartbeat();
@@ -110,7 +135,7 @@ function resetReconnection() {
       cpuCores: config.cpuCores || require('os').cpus().length,
       ramMB: Math.floor(require('os').totalmem() / 1024 / 1024),
       ramFreeMB: Math.floor(require('os').freemem() / 1024 / 1024),
-      cpuIdle: 50, // TODO: Calculate actual CPU usage
+      cpuIdle: await calculateCpuIdle(),
       owner: config.owner || 'unknown',
       region: config.region || 'unknown'
     };
