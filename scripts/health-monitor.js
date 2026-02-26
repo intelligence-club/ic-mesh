@@ -14,13 +14,72 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const { WebSocket } = require('ws');
 
+/**
+ * URL validation to prevent SSRF attacks
+ */
+function validateUrl(url, type = 'base') {
+  try {
+    const parsedUrl = new URL(url);
+    
+    // Only allow HTTP/HTTPS protocols
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error(`Invalid protocol: ${parsedUrl.protocol}. Only http:// and https:// are allowed.`);
+    }
+    
+    // Whitelist based on URL type
+    if (type === 'base') {
+      // Base URLs for IC Mesh - only allow localhost and specific trusted hosts
+      const allowedHosts = [
+        'localhost',
+        '127.0.0.1',
+        '::1',
+        'moilol.com',  // Production domain
+        // Add more trusted hosts as needed
+      ];
+      
+      if (!allowedHosts.includes(parsedUrl.hostname)) {
+        throw new Error(`Host not allowed: ${parsedUrl.hostname}. Allowed hosts: ${allowedHosts.join(', ')}`);
+      }
+      
+      // Only allow standard ports for IC Mesh
+      const allowedPorts = ['', '80', '443', '8333', '8334'];
+      if (!allowedPorts.includes(parsedUrl.port)) {
+        throw new Error(`Port not allowed: ${parsedUrl.port}. Allowed ports: ${allowedPorts.join(', ')}`);
+      }
+    } else if (type === 'slack') {
+      // Slack webhooks must be from hooks.slack.com
+      if (parsedUrl.hostname !== 'hooks.slack.com') {
+        throw new Error(`Invalid Slack webhook host: ${parsedUrl.hostname}. Must be hooks.slack.com`);
+      }
+      
+      // Must use HTTPS for Slack webhooks
+      if (parsedUrl.protocol !== 'https:') {
+        throw new Error('Slack webhooks must use HTTPS');
+      }
+      
+      // Must have the correct path structure for Slack webhooks
+      if (!parsedUrl.pathname.startsWith('/services/')) {
+        throw new Error('Invalid Slack webhook path structure');
+      }
+    }
+    
+    return url;
+  } catch (error) {
+    throw new Error(`URL validation failed: ${error.message}`);
+  }
+}
+
 class HealthMonitor {
   constructor(options = {}) {
-    this.baseUrl = options.baseUrl || 'http://localhost:8333';
+    // Validate and set base URL
+    const defaultBaseUrl = 'http://localhost:8333';
+    this.baseUrl = options.baseUrl ? validateUrl(options.baseUrl, 'base') : defaultBaseUrl;
     this.wsUrl = this.baseUrl.replace('http', 'ws') + '/ws';
     this.continuous = options.continuous || false;
     this.interval = (options.interval || 30) * 1000; // Convert to ms
-    this.slackWebhook = options.slackWebhook;
+    
+    // Validate Slack webhook if provided
+    this.slackWebhook = options.slackWebhook ? validateUrl(options.slackWebhook, 'slack') : null;
     this.lastStatus = null;
     this.checks = [];
   }
@@ -387,9 +446,19 @@ if (require.main === module) {
     } else if (arg.startsWith('--interval=')) {
       options.interval = parseInt(arg.split('=')[1]);
     } else if (arg.startsWith('--slack-webhook=')) {
-      options.slackWebhook = arg.split('=')[1];
+      try {
+        options.slackWebhook = validateUrl(arg.split('=')[1], 'slack');
+      } catch (error) {
+        console.error(`❌ Invalid Slack webhook URL: ${error.message}`);
+        process.exit(1);
+      }
     } else if (arg.startsWith('--base-url=')) {
-      options.baseUrl = arg.split('=')[1];
+      try {
+        options.baseUrl = validateUrl(arg.split('=')[1], 'base');
+      } catch (error) {
+        console.error(`❌ Invalid base URL: ${error.message}`);
+        process.exit(1);
+      }
     }
   }
 
