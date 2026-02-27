@@ -430,7 +430,9 @@ function getAvailableJobs(nodeId) {
     const req = JSON.parse(row.requirements || '{}');
     if (req.capability) {
       const requiredCap = aliasCapability(req.capability);
-      if (!nodeCaps.includes(requiredCap)) return false;
+      // Check if node has either the original capability OR the aliased capability (match claimJob logic)
+      const hasCapability = nodeCaps.includes(req.capability) || nodeCaps.includes(requiredCap);
+      if (!hasCapability) return false;
     }
     if (req.model && !nodeModels.includes(req.model)) return false;
     if (req.minRAM && node && node.ramFreeMB < req.minRAM) return false;
@@ -615,7 +617,9 @@ function broadcastToEligibleNodes(job) {
     const caps = JSON.parse(node.capabilities || '[]');
     if (req.capability) {
       const requiredCap = aliasCapability(req.capability);
-      if (!caps.includes(requiredCap)) continue;
+      // Check if node has either the original capability OR the aliased capability (match claimJob logic)
+      const hasCapability = caps.includes(req.capability) || caps.includes(requiredCap);
+      if (!hasCapability) continue;
     }
     ws.send(JSON.stringify({ type: 'job.dispatch', job }));
   }

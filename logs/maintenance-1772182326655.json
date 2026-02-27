@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-02-27T08:52:06.655Z",
+  "duration": "0s",
+  "summary": {
+    "tasksCompleted": 5,
+    "warnings": 0,
+    "errors": 0
+  },
+  "metrics": {
+    "database": {
+      "before": {
+        "total": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "after": {
+        "total": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "cleaned": 0
+    },
+    "health": {
+      "api": {
+        "responseTime": 16,
+        "status": "healthy"
+      },
+      "database": {
+        "status": "healthy",
+        "jobCount": 0
+      },
+      "disk": {
+        "availableGB": 24.5,
+        "status": "healthy"
+      },
+      "memory": {
+        "totalMB": 1968,
+        "usedMB": 1011,
+        "availableMB": 956,
+        "usagePercent": 51,
+        "status": "healthy"
+      }
+    }
+  },
+  "warnings": [],
+  "errors": [],
+  "dryRun": false
+}
