@@ -310,9 +310,9 @@
                 const text = document.getElementById('overall-text');
                 const description = document.getElementById('overall-description');
 
-                const activeNodes = meshStatus.nodes?.filter(n => n.active)?.length || 0;
-                const totalNodes = meshStatus.nodes?.length || 0;
-                const pendingJobs = meshStatus.pendingJobs || 0;
+                const activeNodes = meshStatus.nodes?.active || 0;
+                const totalNodes = meshStatus.nodes?.total || 0;
+                const pendingJobs = meshStatus.jobs?.pending || 0;
 
                 let status, statusText, statusDesc, emoji;
 
@@ -351,13 +351,7 @@
             updateServices(meshStatus, health) {
                 const servicesList = document.getElementById('services-list');
                 
-                const activeNodes = meshStatus.nodes?.filter(n => n.active) || [];
-                const capabilities = new Set();
-                activeNodes.forEach(node => {
-                    if (node.capabilities) {
-                        node.capabilities.forEach(cap => capabilities.add(cap));
-                    }
-                });
+                const capabilities = new Set(meshStatus.compute?.capabilities || []);
 
                 const services = [
                     {
@@ -414,10 +408,10 @@
             updateMetrics(meshStatus, health) {
                 const metricsContainer = document.getElementById('metrics');
                 
-                const activeNodes = meshStatus.nodes?.filter(n => n.active)?.length || 0;
-                const totalNodes = meshStatus.nodes?.length || 0;
-                const pendingJobs = meshStatus.pendingJobs || 0;
-                const completedJobs = meshStatus.completedJobs || 0;
+                const activeNodes = meshStatus.nodes?.active || 0;
+                const totalNodes = meshStatus.nodes?.total || 0;
+                const pendingJobs = meshStatus.jobs?.pending || 0;
+                const completedJobs = meshStatus.jobs?.completed || 0;
                 
                 // Calculate uptime percentage (simplified)
                 const uptimePercent = totalNodes > 0 ? Math.round((activeNodes / totalNodes) * 100) : 0;
@@ -454,9 +448,9 @@
                 const incidentsList = document.getElementById('incidents-list');
                 
                 const incidents = [];
-                const activeNodes = meshStatus.nodes?.filter(n => n.active)?.length || 0;
-                const totalNodes = meshStatus.nodes?.length || 0;
-                const pendingJobs = meshStatus.pendingJobs || 0;
+                const activeNodes = meshStatus.nodes?.active || 0;
+                const totalNodes = meshStatus.nodes?.total || 0;
+                const pendingJobs = meshStatus.jobs?.pending || 0;
 
                 // Check for service outage
                 if (activeNodes === 0 && totalNodes > 0) {
