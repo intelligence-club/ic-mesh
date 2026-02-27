@@ -551,9 +551,7 @@ function aliasCapability(capability) {
 function getAvailableJobs(nodeId) {
   const pending = stmts.getPendingJobs.all();
   const node = stmts.getNode.get(nodeId);
-  console.log(`DEBUG: getAvailableJobs called with nodeId: ${nodeId}`);
-  console.log(`DEBUG: Found ${pending.length} pending jobs`);
-  console.log(`DEBUG: Node found:`, !!node);
+  logger.debug(`getAvailableJobs called`, { nodeId, pendingCount: pending.length, nodeFound: !!node });
   
   // Check if node is quarantined
   if (node) {
@@ -1569,7 +1567,7 @@ const server = http.createServer(async (req, res) => {
             });
           }
         } catch (e) {
-          console.log(`⚠ Stripe transfer failed: ${e.message}`);
+          logger.warn('Stripe transfer failed', { error: e.message, nodeId, amount_usd: amountUsd });
           // Fall through to manual cashout
         }
       }
@@ -1582,7 +1580,12 @@ const server = http.createServer(async (req, res) => {
       );
       db.prepare(`UPDATE payouts SET cashed_out_ints = COALESCE(cashed_out_ints, 0) + ? WHERE nodeId = ?`).run(requestedInts, nodeId);
 
-      console.log(`◉ CASHOUT: ${nodeId.slice(0,8)} → ${requestedInts} ints ($${amountUsd}) [${payoutMethod}]`);
+      logger.info('Cashout processed', { 
+        nodeId: nodeId.slice(0,8), 
+        amount_ints: requestedInts, 
+        amount_usd: amountUsd, 
+        payout_method: payoutMethod 
+      });
 
       return json(res, {
         ok: true,
