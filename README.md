@@ -1,5 +1,39 @@
 # IC Mesh — Distributed Compute Network
 
+
+## 🚀 Quick Start (New Users)
+
+**Want to start earning with your machine? Choose your path:**
+
+### Option 1: Guided Setup (Recommended)
+```bash
+git clone https://github.com/intelligence-club/ic-mesh.git
+cd ic-mesh
+node scripts/operator-setup.js
+```
+
+### Option 2: Smart Start (Auto-validation)
+```bash
+git clone https://github.com/intelligence-club/ic-mesh.git
+cd ic-mesh
+npm install
+node scripts/smart-start.js
+```
+
+### Option 3: Manual Setup
+```bash
+git clone https://github.com/intelligence-club/ic-mesh.git
+cd ic-mesh
+# Follow detailed instructions in JOIN.md
+```
+
+**✅ All methods include:**
+- System capability detection
+- Earning potential analysis
+- Configuration validation
+- Performance optimization
+
+---
 **Your hardware. Our network. Multiplied.**
 
 A distributed compute mesh that connects idle hardware into a shared network. Transcription, image generation, AI inference — powered by real machines, not rented cloud.
@@ -603,3 +637,32 @@ The mesh becomes a tool for ecosystem restoration when we direct its computation
 ---
 
 **Intelligence Club** · Open source · Hawaiʻi-based · [hello@moilol.com](mailto:hello@moilol.com)
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+**❌ "Connection refused" or "Cannot reach mesh server"**
+- Check internet connectivity: `curl https://google.com`
+- Verify mesh server: `curl https://moilol.com:8333/status`
+- Check firewall settings (port 8333)
+
+**❌ "No configuration found"**
+- Run setup: `node scripts/operator-setup.js`
+- Or copy: `cp node-config.json.sample node-config.json`
+
+**❌ "No jobs received"**
+- Verify capabilities: `node scripts/onboarding-validator.js`
+- Check network status: https://moilol.com:8333
+- Ensure handlers are enabled in your config
+
+**💰 Low earnings?**
+- Install high-value capabilities: Ollama, Whisper
+- Keep node online 24/7
+- Monitor job availability at https://moilol.com:8333
+
+### Get Help
+- 📖 Full guide: [JOIN.md](JOIN.md)
+- 🔍 Validation: `node scripts/onboarding-validator.js`
+- 📊 Status: https://moilol.com:8333
+- 💬 Community: [Intelligence Club Discord](https://moilol.com)
+
