@@ -1440,6 +1440,27 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // ---- API Key Creation ----
+    if (method === 'POST' && pathname === '/api/create_api_key') {
+      try {
+        // Generate API key: ic_ prefix + 64 hex characters
+        const keyBytes = crypto.randomBytes(32);
+        const api_key = 'ic_' + keyBytes.toString('hex');
+        const created = new Date().toISOString();
+        
+        return json(res, {
+          api_key: api_key,
+          created: created,
+          note: 'Store this API key securely. It will not be shown again.',
+          usage: 'Include in X-Api-Key header or Authorization: Bearer <key>',
+          expires: 'Never (until manually revoked)'
+        });
+      } catch (error) {
+        console.error('Failed to create API key:', error);
+        return json(res, { error: 'Failed to create API key' }, 500);
+      }
+    }
+
     // ---- List tickets (admin only) ----
     if (method === 'GET' && pathname === '/api/tickets') {
       const adminKey = req.headers['x-admin-key'] || req.headers['authorization']?.replace('Bearer ', '');
