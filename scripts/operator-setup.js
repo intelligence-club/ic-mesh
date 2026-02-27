@@ -275,7 +275,7 @@ async function setupStripeConnect() {
     const proceed = await ask('\nPress Enter when you\'ve completed Stripe setup (or skip)');
     
     if (proceed.toLowerCase() !== 'skip') {
-      success('Payment setup completed! You\\'ll receive earnings via Stripe.');
+      success('Payment setup completed! You\'ll receive earnings via Stripe.');
     }
   } else {
     warn('Skipping payment setup - you can do this later at https://moilol.com/account');
