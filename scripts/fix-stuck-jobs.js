@@ -6,41 +6,50 @@ const path = require('path');
 const dbPath = path.join(__dirname, '../data/mesh.db');
 const db = new Database(dbPath);
 
-console.log('🔧 Fixing stuck jobs...\n');
+// Check for jobs claimed more than 10 minutes ago
+const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
 
-// Find jobs that have been claimed for more than 10 minutes (should have completed by now)
-const now = Date.now();
-const tenMinutesAgo = now - (10 * 60 * 1000);
+console.log('🔍 Checking for stuck claimed jobs...');
 
-console.log('Current timestamp:', now);
-console.log('Looking for jobs claimed before:', tenMinutesAgo);
+const stuckJobs = db.prepare(`
+  SELECT jobId, type, claimedBy, claimedAt
+  FROM jobs 
+  WHERE status = 'claimed' 
+  AND claimedAt < ?
+`).all(tenMinutesAgo);
 
-// Check current claimed jobs
-const claimedJobs = db.prepare("SELECT jobId, type, claimedAt, claimedBy FROM jobs WHERE status = 'claimed'").all();
-console.log(`Found ${claimedJobs.length} claimed jobs:`);
+console.log(`Found ${stuckJobs.length} jobs claimed more than 10 minutes ago`);
 
-let fixedCount = 0;
-
-claimedJobs.forEach(job => {
-  console.log(`  ${job.jobId.slice(0,8)}... (${job.type}) - claimedAt: ${job.claimedAt}`);
+if (stuckJobs.length > 0) {
+  console.log('\n🔧 Resetting stuck jobs to pending...');
   
-  // If claimedAt is null, very old, or invalid format, consider it stuck
-  if (!job.claimedAt || job.claimedAt < tenMinutesAgo || job.claimedAt > now) {
-    console.log(`    🚨 Stuck job detected - resetting to pending`);
-    
-    // Reset to pending
-    const resetStmt = db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL WHERE jobId = ?");
+  const resetStmt = db.prepare(`
+    UPDATE jobs 
+    SET status = 'pending', claimedBy = NULL, claimedAt = NULL 
+    WHERE jobId = ?
+  `);
+  
+  stuckJobs.forEach(job => {
     resetStmt.run(job.jobId);
-    fixedCount++;
-  }
+    console.log(`  Reset ${job.jobId.slice(0,8)}... (${job.type})`);
+  });
+  
+  console.log(`\n✅ Reset ${stuckJobs.length} stuck jobs to pending status`);
+} else {
+  console.log('✅ No stuck jobs found');
+}
+
+// Show current status
+console.log('\n📊 Updated Job Status:');
+const statusCounts = db.prepare(`
+  SELECT status, COUNT(*) as count 
+  FROM jobs 
+  GROUP BY status 
+  ORDER BY count DESC
+`).all();
+
+statusCounts.forEach(row => {
+  console.log(`  ${row.status}: ${row.count}`);
 });
 
-console.log(`\n✅ Fixed ${fixedCount} stuck jobs`);
-
-// Show updated status
-const updatedStatus = db.prepare("SELECT status, COUNT(*) as count FROM jobs GROUP BY status").all();
-console.log('\nUpdated job status:');
-updatedStatus.forEach(row => console.log(`  ${row.status}: ${row.count}`));
-
 db.close();
-console.log('\n🎯 Job queue optimization complete!');

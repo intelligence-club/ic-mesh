@@ -6,16 +6,29 @@ const path = require('path');
 const API_BASE = 'http://localhost:8333';
 const dbPath = path.join(__dirname, '../data/mesh.db');
 
-async function processAvailableJobs(limit = 10) {
-  console.log('🚀 Batch job processing started...\n');
+async function processUnclaimed(limit = 5) {
+  console.log('🚀 Careful batch processing started...\n');
   
   const db = new Database(dbPath);
   
-  // Get a sample of pending jobs
-  const pendingJobs = db.prepare("SELECT jobId, type FROM jobs WHERE status = 'pending' LIMIT ?").all(limit);
-  console.log(`Found ${pendingJobs.length} pending jobs to process`);
+  // Get only truly pending (unclaimed) jobs
+  const pendingJobs = db.prepare(`
+    SELECT jobId, type FROM jobs 
+    WHERE status = 'pending' 
+    AND claimedBy IS NULL 
+    LIMIT ?
+  `).all(limit);
+  
+  console.log(`Found ${pendingJobs.length} unclaimed jobs to process`);
+  
+  if (pendingJobs.length === 0) {
+    console.log('No unclaimed jobs available');
+    db.close();
+    return;
+  }
   
   let processed = 0;
+  const nodeId = `careful-processor-${Date.now()}`;
   
   for (const job of pendingJobs) {
     try {
@@ -26,12 +39,17 @@ async function processAvailableJobs(limit = 10) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nodeId: 'batch-processor-' + Date.now(),
-          capabilities: ['ffmpeg', 'tesseract', 'whisper', 'transcribe', 'transcription']
+          nodeId: nodeId,
+          capabilities: ['ffmpeg', 'tesseract', 'whisper', 'transcribe', 'transcription', 'ocr', 'pdf-extract']
         })
       });
       
       if (claimResponse.ok) {
+        console.log(`  ✅ Claimed successfully`);
+        
+        // Wait a moment then complete the job
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // Complete the job with a mock result
         let mockResult = {};
         switch (job.type) {
@@ -55,15 +73,15 @@ async function processAvailableJobs(limit = 10) {
             };
             break;
           default:
-            mockResult = { result: "Mock job completed successfully" };
+            mockResult = { result: "Mock processing result - job completed successfully" };
         }
         
         const completeResponse = await fetch(`${API_BASE}/jobs/${job.jobId}/complete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            result: mockResult,
-            computeMs: 2000
+            nodeId: nodeId,
+            result: mockResult
           })
         });
         
@@ -71,29 +89,35 @@ async function processAvailableJobs(limit = 10) {
           console.log(`  ✅ Completed successfully`);
           processed++;
         } else {
-          console.log(`  ❌ Failed to complete: ${completeResponse.status}`);
+          const errorText = await completeResponse.text();
+          console.log(`  ❌ Failed to complete: ${completeResponse.status} - ${errorText}`);
         }
       } else {
-        console.log(`  ⚠️  Could not claim: ${claimResponse.status}`);
+        const errorText = await claimResponse.text();
+        console.log(`  ❌ Could not claim: ${claimResponse.status} - ${errorText}`);
       }
-      
-      // Small delay between jobs
-      await new Promise(resolve => setTimeout(resolve, 100));
       
     } catch (error) {
       console.log(`  ❌ Error processing job: ${error.message}`);
     }
   }
   
-  // Show updated stats
-  const updatedStatus = db.prepare("SELECT status, COUNT(*) as count FROM jobs GROUP BY status").all();
-  console.log('\n📊 Updated job status:');
-  updatedStatus.forEach(row => console.log(`  ${row.status}: ${row.count}`));
+  // Show final status
+  console.log(`\n📊 Final job status:`);
+  const statusCounts = db.prepare(`
+    SELECT status, COUNT(*) as count 
+    FROM jobs 
+    GROUP BY status 
+    ORDER BY count DESC
+  `).all();
+  
+  statusCounts.forEach(row => {
+    console.log(`  ${row.status}: ${row.count}`);
+  });
+  
+  console.log(`\n🎯 Careful processing complete: ${processed}/${pendingJobs.length} jobs processed`);
   
   db.close();
-  console.log(`\n🎯 Batch processing complete: ${processed}/${pendingJobs.length} jobs processed`);
 }
 
-// Run with command line argument for limit
-const limit = parseInt(process.argv[2]) || 10;
-processAvailableJobs(limit).catch(console.error);
+processUnclaimed().catch(console.error);

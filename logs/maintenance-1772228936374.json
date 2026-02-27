@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-02-27T21:48:56.374Z",
+  "duration": "0s",
+  "summary": {
+    "tasksCompleted": 5,
+    "warnings": 3,
+    "errors": 0
+  },
+  "metrics": {
+    "database": {
+      "before": {
+        "total": 5,
+        "failed": 0,
+        "completed": 0
+      },
+      "after": {
+        "total": 5,
+        "failed": 0,
+        "completed": 0
+      },
+      "cleaned": 0
+    },
+    "health": {
+      "api": {
+        "responseTime": 14,
+        "status": "healthy"
+      },
+      "database": {
+        "status": "healthy",
+        "jobCount": 5
+      },
+      "disk": {
+        "availableGB": 65,
+        "status": "healthy"
+      },
+      "memory": {
+        "totalMB": 3915,
+        "usedMB": 1316,
+        "availableMB": 2599,
+        "usagePercent": 34,
+        "status": "healthy"
+      }
+    }
+  },
+  "warnings": [
+    "Security issue: .env is readable by others (permissions: 100644)",
+    "Security issue: node-config.json is readable by others (permissions: 100644)",
+    "Security issue: Possible default credentials found in .env file"
+  ],
+  "errors": [],
+  "dryRun": false
+}
