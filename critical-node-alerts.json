@@ -509,6 +509,7 @@
       "alertId": "4a5cde9ebc1a473a_7d"
     },
     {
+<<<<<<< HEAD
       "nodeId": "9b6a3b5841dc2890",
       "nodeName": "miniclaw",
       "owner": "drake",
@@ -531,16 +532,52 @@
       "details": "Owner: drake | Critical capabilities: whisper, gpu-metal | Jobs completed: 5",
       "action": "Contact Drake to restore node",
       "alertId": "9b6a3b5841dc2890_2d"
+=======
+      "nodeId": "fcecb481aa501e7a",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "HIGH",
+      "offlineDuration": 587006228,
+      "timeDescription": "6 days",
+      "capabilities": [
+        "ollama",
+        "tesseract",
+        "transcribe",
+        "generate"
+      ],
+      "allCapabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "jobsCompleted": 43,
+      "lastSeen": "2026-02-21T00:16:23.107Z",
+      "alertTime": "2026-02-27T19:19:49.351Z",
+      "message": "🚨 HIGH: Node frigg (fcecb481) offline for 6 days",
+      "details": "Owner: drake | Critical capabilities: ollama, tesseract, transcribe, generate | Jobs completed: 43",
+      "action": "Contact Drake to restore node",
+      "alertId": "fcecb481aa501e7a_6d"
+>>>>>>> 4d140aa495d7a66cdeadfb94577a8b01d695b364
     },
     {
       "nodeId": "a47cd29ac23cf10e",
       "nodeName": "frigg",
       "owner": "drake",
       "severity": "HIGH",
+<<<<<<< HEAD
       "offlineDuration": 230237950,
       "timeDescription": "2 days",
       "capabilities": [
         "gpu-metal",
+=======
+      "offlineDuration": 602006228,
+      "timeDescription": "6 days",
+      "capabilities": [
+>>>>>>> 4d140aa495d7a66cdeadfb94577a8b01d695b364
         "stable-diffusion"
       ],
       "allCapabilities": [
@@ -549,6 +586,7 @@
         "stable-diffusion"
       ],
       "jobsCompleted": 6,
+<<<<<<< HEAD
       "lastSeen": "2026-02-25T03:27:58.565Z",
       "alertTime": "2026-02-27T19:25:16.530Z",
       "message": "🚨 HIGH: Node frigg (a47cd29a) offline for 2 days",
@@ -612,6 +650,41 @@
       "browser": 1,
       "node": 1,
       "email": 1
+=======
+      "lastSeen": "2026-02-20T20:06:23.107Z",
+      "alertTime": "2026-02-27T19:19:49.351Z",
+      "message": "🚨 HIGH: Node frigg (a47cd29a) offline for 6 days",
+      "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
+      "action": "Contact Drake to restore node",
+      "alertId": "a47cd29ac23cf10e_6d"
+    }
+  ],
+  "lastCheck": 1772220935729,
+  "summary": {
+    "totalNodes": 6,
+    "activeNodes": 3,
+    "offlineNodes": 3,
+    "criticalAlertsGenerated": 0,
+    "criticalCapabilities": [
+      "tesseract",
+      "transcription",
+      "ollama",
+      "transcribe",
+      "generate",
+      "stable-diffusion"
+    ],
+    "capabilityCount": {
+      "test": 1,
+      "whisper": 3,
+      "ffmpeg": 4,
+      "tesseract": 2,
+      "transcription": 1,
+      "ollama": 1,
+      "gpu-metal": 3,
+      "transcribe": 1,
+      "generate": 1,
+      "stable-diffusion": 1
+>>>>>>> 4d140aa495d7a66cdeadfb94577a8b01d695b364
     }
   }
 }

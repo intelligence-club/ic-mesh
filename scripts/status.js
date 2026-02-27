@@ -90,8 +90,17 @@ async function main() {
       }
     }
 
-    // Recent jobs
-    const availableJobs = await request('/jobs/available');
+    // Recent jobs - use first active node for capability filtering
+    let availableJobsUrl = '/jobs/available';
+    if (nodes.status === 200 && nodes.data.nodes) {
+      const nodeList = Object.values(nodes.data.nodes);
+      const firstActiveNode = nodeList.find(node => node.status === 'online');
+      if (firstActiveNode) {
+        availableJobsUrl = `/jobs/available?nodeId=${firstActiveNode.nodeId}`;
+      }
+    }
+    
+    const availableJobs = await request(availableJobsUrl);
     if (availableJobs.status === 200 && availableJobs.data.jobs) {
       console.log('📋 Available Jobs:');
       

@@ -929,7 +929,7 @@ const server = http.createServer(async (req, res) => {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);
       const job = completeJob(jobId, data.nodeId, data);
-      if (!job) return json(res, { error: 'Not your job' }, 403);
+      if (!job) return json(res, { error: 'Job access denied', detail: 'You can only fail jobs that your node claimed', suggestion: 'Check job ownership or claim status' }, 403);
       return json(res, { ok: true, job });
     }
     
@@ -975,7 +975,7 @@ const server = http.createServer(async (req, res) => {
     // ---- Earnings by email (aggregate across all nodes) ----
     if (method === 'GET' && pathname === '/earnings') {
       const email = url.searchParams.get('email');
-      if (!email) return json(res, { error: 'email parameter required' }, 400);
+      if (!email) return json(res, { error: 'Email parameter required', detail: 'Include email in request body for Stripe Connect onboarding', example: { email: 'node@example.com' } }, 400);
       const nodes = db.prepare('SELECT nodeId, name FROM nodes WHERE payout_email = ?').all(email.toLowerCase().trim());
       let totalEarned = 0, totalCashedOut = 0, totalJobs = 0;
       const nodeEarnings = [];
@@ -1054,7 +1054,7 @@ const server = http.createServer(async (req, res) => {
       if (!nodeId || !email) return json(res, { error: 'Node onboarding requires nodeId and email', detail: 'Both fields are mandatory for Stripe Connect setup', example: { nodeId: 'node-123', email: 'operator@example.com' } }, 400);
       
       const node = stmts.getNode.get(nodeId);
-      if (!node) return json(res, { error: 'Node not found. Register first.' }, 404);
+      if (!node) return json(res, { error: 'Node not found', detail: 'Node must be registered before Stripe onboarding', suggestion: 'Use POST /nodes/register to register your node first' }, 404);
       
       // If already has Stripe account, return new onboarding link
       if (node.stripe_account_id) {
@@ -1096,7 +1096,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname === '/nodes/link-stripe') {
       const data = await parseBody(req);
       const { nodeId, sourceNodeId } = data;
-      if (!nodeId || !sourceNodeId) return json(res, { error: 'nodeId and sourceNodeId required' }, 400);
+      if (!nodeId || !sourceNodeId) return json(res, { error: 'Missing required parameters', detail: 'Both nodeId and sourceNodeId are required for cashout requests', example: { nodeId: 'abc123', sourceNodeId: 'def456' } }, 400);
       const target = stmts.getNode.get(nodeId);
       const source = stmts.getNode.get(sourceNodeId);
       if (!target) return json(res, { error: 'Target node not found' }, 404);
