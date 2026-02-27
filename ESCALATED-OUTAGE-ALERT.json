@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-02-27T08:23:21.460Z",
+  "persistentMinutes": 71.60263333333333,
+  "status": {
+    "level": "CRITICAL",
+    "severity": "COMPLETE_OUTAGE",
+    "message": "COMPLETE SERVICE OUTAGE: 178 jobs pending, 0 customer-capable nodes",
+    "pendingJobs": 178,
+    "activeNodes": 0,
+    "totalNodes": 5,
+    "actions": [
+      "IMMEDIATE_OPERATOR_CONTACT",
+      "HUMAN_ESCALATION"
+    ]
+  },
+  "escalationLevel": "EMERGENCY",
+  "recommendedActions": [
+    "Contact all known operators via all channels",
+    "Consider emergency operator recruitment",
+    "Prepare customer communication",
+    "Escalate to system administrator"
+  ]
+}

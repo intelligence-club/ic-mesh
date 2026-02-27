@@ -1,7 +1,93 @@
 {
   "crisisStart": "2026-02-27T06:09:25.975Z",
-  "events": [],
-  "lastUpdate": null,
+  "events": [
+    {
+      "timestamp": "2026-02-27T07:44:38.493Z",
+      "type": "node_reconnected",
+      "nodeId": "5ef95d69",
+      "owner": "unknown",
+      "capabilities": [
+        "transcription"
+      ],
+      "message": "🟢 Node 5ef95d69 (unknown) RECONNECTED"
+    },
+    {
+      "timestamp": "2026-02-27T07:44:38.493Z",
+      "type": "service_restored",
+      "message": "🎉 SERVICE RESTORED - 1 nodes active"
+    },
+    {
+      "timestamp": "2026-02-27T07:49:38.735Z",
+      "type": "node_disconnected",
+      "nodeId": "5ef95d69",
+      "owner": "unknown",
+      "capabilities": [
+        "transcription"
+      ],
+      "message": "🔴 Node 5ef95d69 (unknown) DISCONNECTED"
+    },
+    {
+      "timestamp": "2026-02-27T07:49:38.735Z",
+      "type": "service_outage",
+      "message": "🚨 COMPLETE SERVICE OUTAGE - All nodes offline"
+    },
+    {
+      "timestamp": "2026-02-27T08:02:09.325Z",
+      "type": "node_reconnected",
+      "nodeId": "5363c6e5",
+      "owner": "unknown",
+      "capabilities": [
+        "test"
+      ],
+      "message": "🟢 Node 5363c6e5 (unknown) RECONNECTED"
+    },
+    {
+      "timestamp": "2026-02-27T08:02:09.325Z",
+      "type": "service_restored",
+      "message": "🎉 SERVICE RESTORED - 1 nodes active"
+    },
+    {
+      "timestamp": "2026-02-27T08:07:09.472Z",
+      "type": "node_disconnected",
+      "nodeId": "5363c6e5",
+      "owner": "unknown",
+      "capabilities": [
+        "test"
+      ],
+      "message": "🔴 Node 5363c6e5 (unknown) DISCONNECTED"
+    },
+    {
+      "timestamp": "2026-02-27T08:07:09.472Z",
+      "type": "service_outage",
+      "message": "🚨 COMPLETE SERVICE OUTAGE - All nodes offline"
+    },
+    {
+      "timestamp": "2026-02-27T08:11:09.656Z",
+      "type": "node_reconnected",
+      "nodeId": "5ef95d69",
+      "owner": "unknown",
+      "capabilities": [
+        "transcription"
+      ],
+      "message": "🟢 Node 5ef95d69 (unknown) RECONNECTED"
+    },
+    {
+      "timestamp": "2026-02-27T08:11:09.656Z",
+      "type": "node_reconnected",
+      "nodeId": "5363c6e5",
+      "owner": "unknown",
+      "capabilities": [
+        "test"
+      ],
+      "message": "🟢 Node 5363c6e5 (unknown) RECONNECTED"
+    },
+    {
+      "timestamp": "2026-02-27T08:11:09.657Z",
+      "type": "service_restored",
+      "message": "🎉 SERVICE RESTORED - 2 nodes active"
+    }
+  ],
+  "lastUpdate": "2026-02-27T08:11:09.657Z",
   "recoveryProgress": {
     "nodesRecovered": 0,
     "jobsProcessed": 0,
