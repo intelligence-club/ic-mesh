@@ -461,7 +461,9 @@ function claimJob(jobId, nodeId) {
   if (req.capability) {
     const caps = node ? JSON.parse(node.capabilities || '[]') : [];
     const requiredCap = aliasCapability(req.capability);
-    if (!caps.includes(requiredCap)) {
+    // Check if node has either the original capability OR the aliased capability
+    const hasCapability = caps.includes(req.capability) || caps.includes(requiredCap);
+    if (!hasCapability) {
       logger.jobEvent(jobId.slice(0, 8), 'claim rejected', {
         nodeId: nodeId.slice(0, 8),
         reason: 'missing_capability',
