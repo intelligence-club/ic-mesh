@@ -43,7 +43,7 @@ class QueueHealthMonitor {
          FROM jobs 
          GROUP BY status`,
         (err, rows) => {
-          if (err) reject(err);
+          if (err) return reject(err);
           
           const counts = {};
           rows.forEach(row => {
@@ -63,13 +63,13 @@ class QueueHealthMonitor {
       this.db.all(
         `SELECT 
            COUNT(*) as total,
-           SUM(CASE WHEN lastHeartbeat > ? THEN 1 ELSE 0 END) as active,
+           SUM(CASE WHEN lastSeen > ? THEN 1 ELSE 0 END) as active,
            SUM(CASE WHEN capabilities LIKE '%whisper%' THEN 1 ELSE 0 END) as withWhisper,
            SUM(CASE WHEN capabilities LIKE '%ollama%' THEN 1 ELSE 0 END) as withOllama
          FROM nodes`,
         [fiveMinAgo],
         (err, rows) => {
-          if (err) reject(err);
+          if (err) return reject(err);
           resolve(rows[0] || {});
         }
       );
@@ -110,7 +110,7 @@ class QueueHealthMonitor {
          WHERE status = 'pending'`,
         [now, now, now],
         (err, rows) => {
-          if (err) reject(err);
+          if (err) return reject(err);
           resolve(rows[0] || {});
         }
       );
