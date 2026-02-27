@@ -115,7 +115,7 @@ class AutoOnboardingSystem {
 
   // Interactive new operator onboarding
   async runNewOperatorOnboarding() {
-    console.log('🎯 Welcome to IC Mesh! Let\\'s set up your earning node.\n');
+    console.log('🎯 Welcome to IC Mesh! Let\'s set up your earning node.\n');
     console.log('This wizard will configure your system for maximum success and earnings.\n');
 
     // Step 1: System Analysis
@@ -509,7 +509,7 @@ function main() {
       console.log('  validate  - Check existing configuration for issues');
       console.log('  monitor   - Real-time performance monitoring');
       console.log('  optimize  - Analyze and optimize current setup');
-      console.log('\\nStart here if you\\'re new: ./auto-onboard.js new');
+      console.log('\nStart here if you\'re new: ./auto-onboard.js new');
   }
 }
 

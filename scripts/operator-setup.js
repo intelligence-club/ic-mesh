@@ -258,9 +258,9 @@ async function createOperatorConfig(capabilities) {
 }
 
 async function setupStripeConnect() {
-  console.log(colors.bold('\\n💳 Setting Up Payments (Stripe Connect)\\n'));
+  console.log(colors.bold('\n💳 Setting Up Payments (Stripe Connect)\n'));
   
-  info('To receive payments, you\\'ll need to set up Stripe Connect.');
+  info('To receive payments, you\'ll need to set up Stripe Connect.');
   info('This is free and takes ~2 minutes.');
   
   const setupNow = await ask('Set up payments now? (y/n)', 'y');
@@ -272,7 +272,7 @@ async function setupStripeConnect() {
     console.log('3. ✅ Complete the Stripe Connect onboarding');
     console.log('4. 💰 Start receiving payments!');
     
-    const proceed = await ask('\\nPress Enter when you\\'ve completed Stripe setup (or skip)');
+    const proceed = await ask('\nPress Enter when you\'ve completed Stripe setup (or skip)');
     
     if (proceed.toLowerCase() !== 'skip') {
       success('Payment setup completed! You\\'ll receive earnings via Stripe.');
