@@ -432,22 +432,50 @@ function jobToJSON(row) {
 }
 
 function registerNode(data) {
+  // SECURITY: Basic validation for node registration
+  const ip = data.ip || 'unknown';
+  
+  // Rate limiting: prevent rapid registrations from same IP
+  const recentRegistrations = db.prepare(`
+    SELECT COUNT(*) as count FROM nodes 
+    WHERE ip = ? AND registeredAt > ?
+  `).get(ip, Date.now() - 300000); // 5 minutes
+  
+  if (recentRegistrations.count >= 10) {
+    logger.error('registration-rate-limit', `Too many registrations from IP ${ip}`, { ip, count: recentRegistrations.count });
+    throw new Error('Registration rate limit exceeded. Please wait before registering more nodes.');
+  }
+  
+  // Validate required fields
+  if (!data.name || data.name.length < 1 || data.name.length > 64) {
+    throw new Error('Node name is required and must be 1-64 characters');
+  }
+  
+  // Sanitize owner field
+  const sanitizedOwner = (data.owner || 'unknown').replace(/[<>'"&]/g, '');
+  
   // Dedup: if client sends an ID we know, use it. Otherwise match by name+owner.
   let id = data.nodeId;
   if (!id || !stmts.getNode.get(id)) {
-    const existing = stmts.findNodeByNameOwner.get(data.name || 'unnamed', data.owner || 'unknown');
+    const existing = stmts.findNodeByNameOwner.get(data.name, sanitizedOwner);
     id = existing ? existing.nodeId : genId();
   }
   const now = Date.now();
+  // SECURITY: Validate and sanitize numeric fields
+  const cpuCores = Math.max(0, Math.min(128, parseInt(data.cpuCores) || 0));
+  const ramMB = Math.max(0, Math.min(1048576, parseInt(data.ramMB) || 0)); // 1TB max
+  const ramFreeMB = Math.max(0, Math.min(ramMB, parseInt(data.ramFreeMB) || 0));
+  const cpuIdle = Math.max(0, Math.min(100, parseFloat(data.cpuIdle) || 0));
+  const gpuVRAM = Math.max(0, Math.min(131072, parseInt(data.gpuVRAM) || 0)); // 128GB max
+  const diskFreeGB = Math.max(0, Math.min(1048576, parseInt(data.diskFreeGB) || 0)); // 1PB max
+  
   stmts.upsertNode.run({
-    nodeId: id, name: data.name || 'unnamed', ip: data.ip || 'unknown',
+    nodeId: id, name: data.name, ip: data.ip || 'unknown',
     capabilities: JSON.stringify(data.capabilities || []),
     models: JSON.stringify(data.models || []),
     manifests: JSON.stringify(data.manifests || {}),
-    cpuCores: data.cpuCores || 0, ramMB: data.ramMB || 0,
-    ramFreeMB: data.ramFreeMB || 0, cpuIdle: data.cpuIdle || 0,
-    gpuVRAM: data.gpuVRAM || 0, diskFreeGB: data.diskFreeGB || 0,
-    owner: data.owner || 'unknown', region: data.region || 'unknown',
+    cpuCores, ramMB, ramFreeMB, cpuIdle, gpuVRAM, diskFreeGB,
+    owner: sanitizedOwner, region: data.region || 'unknown',
     lastSeen: now, registeredAt: now
   });
 
@@ -617,14 +645,51 @@ function completeJob(jobId, nodeId, result) {
   // Parse job payload to get price_ints if set by the payment system
   let priceInts = 0;
   const payload = safeJsonParse(job.payload, {}, 'job completion payload');
-  priceInts = parseInt(payload.price_ints) || 0;
+  const rawPriceInts = parseInt(payload.price_ints) || 0;
+  
+  // SECURITY: Validate price_ints to prevent overflow and manipulation
+  const MAX_PRICE_INTS = 100000000; // $1000 max (100M ints = $1000 at 0.01/int)
+  if (rawPriceInts < 0) {
+    logger.error('negative-price-attack', `Rejected negative price_ints: ${rawPriceInts}`, { nodeId, jobId });
+    return null; // Reject job completion with negative price
+  }
+  if (rawPriceInts > MAX_PRICE_INTS) {
+    logger.error('price-overflow-attack', `Rejected excessive price_ints: ${rawPriceInts}`, { nodeId, jobId });
+    return null; // Reject job completion with excessive price
+  }
+  priceInts = rawPriceInts;
   
   // Revenue split: 80% node, 15% treasury, 5% infra (all integer ints)
   const nodeCut = Math.floor(priceInts * 80 / 100);
   const treasuryCut = Math.floor(priceInts * 15 / 100);
   const infraCut = priceInts - nodeCut - treasuryCut; // remainder to infra (avoids rounding loss)
   
-  stmts.completeJob.run(now, JSON.stringify(result.data || null), computeMs, priceInts, jobId, nodeId);
+  // SECURITY: Validate completion data to prevent malicious injection
+  let completionData = result.data || null;
+  if (completionData !== null) {
+    // Basic validation - reject if too large or contains suspicious content
+    const dataStr = JSON.stringify(completionData);
+    if (dataStr.length > 10485760) { // 10MB max
+      logger.error('completion-data-too-large', `Rejected large completion data: ${dataStr.length} bytes`, { nodeId, jobId });
+      return null;
+    }
+    
+    // Check for basic script injection attempts
+    const suspiciousPatterns = [
+      /<script[^>]*>/i, 
+      /javascript:/i, 
+      /on\w+\s*=/i, 
+      /<iframe[^>]*>/i,
+      /data:text\/html/i
+    ];
+    
+    if (suspiciousPatterns.some(pattern => pattern.test(dataStr))) {
+      logger.error('completion-data-injection', `Rejected suspicious completion data`, { nodeId, jobId, patterns: 'detected' });
+      return null;
+    }
+  }
+  
+  stmts.completeJob.run(now, JSON.stringify(completionData), computeMs, priceInts, jobId, nodeId);
   stmts.updateNodeStats.run(computeMinutes, nodeId);
   
   // Legacy ledger (compute minutes)
@@ -934,10 +999,15 @@ const server = http.createServer(async (req, res) => {
 
     // ---- Node Registry ----
     if (method === 'POST' && pathname === '/nodes/register') {
-      const data = await parseBody(req);
-      data.ip = getClientIp(req);
-      const node = registerNode(data);
-      return json(res, { ok: true, node });
+      try {
+        const data = await parseBody(req);
+        data.ip = getClientIp(req);
+        const node = registerNode(data);
+        return json(res, { ok: true, node });
+      } catch (error) {
+        logger.error('node-registration-failed', error.message, { ip: getClientIp(req) });
+        return json(res, { error: error.message }, 400);
+      }
     }
     
     if (method === 'GET' && pathname === '/nodes') {
@@ -1181,6 +1251,29 @@ const server = http.createServer(async (req, res) => {
           detail: 'Provide job-specific parameters in the payload field',
           example: { type: 'transcribe', payload: { audio_url: 'https://example.com/audio.wav', language: 'en' } }
         }, 400);
+      }
+      
+      // SECURITY: Validate price_ints in payload to prevent payment manipulation
+      if (data.payload && typeof data.payload.price_ints !== 'undefined') {
+        const priceInts = parseInt(data.payload.price_ints);
+        const MAX_PRICE_INTS = 100000000; // $1000 max (100M ints = $1000 at 0.01/int)
+        
+        if (isNaN(priceInts) || priceInts < 0) {
+          return json(res, { 
+            error: 'Invalid price_ints value',
+            detail: 'price_ints must be a positive integer',
+            value: data.payload.price_ints
+          }, 400);
+        }
+        
+        if (priceInts > MAX_PRICE_INTS) {
+          return json(res, { 
+            error: 'Price too high',
+            detail: `Maximum price is ${MAX_PRICE_INTS} ints ($${MAX_PRICE_INTS/100})`,
+            value: priceInts,
+            max: MAX_PRICE_INTS
+          }, 400);
+        }
       }
       
       // Sanitize payload — strip dangerous characters from string values
