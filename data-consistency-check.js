@@ -187,7 +187,7 @@ class DataConsistencyChecker {
         
         const { database, api, analysisTools } = this.results.sources;
         
-        // Compare job counts
+        // Compare job counts (database vs available jobs API)
         if (database.pendingJobs !== undefined && api.availableJobs !== undefined) {
             if (database.pendingJobs !== api.availableJobs) {
                 this.results.discrepancies.push({
@@ -199,7 +199,31 @@ class DataConsistencyChecker {
             }
         }
 
-        // Compare node counts
+        // Compare job counts (available jobs vs status endpoint)
+        if (api.availableJobs !== undefined && api.status?.jobs?.pending !== undefined) {
+            if (api.availableJobs !== api.status.jobs.pending) {
+                this.results.discrepancies.push({
+                    type: 'api_job_count_inconsistency',
+                    severity: 'high',
+                    description: `Available jobs API shows ${api.availableJobs} jobs but status endpoint shows ${api.status.jobs.pending} pending jobs`,
+                    sources: { availableJobs: api.availableJobs, statusPending: api.status.jobs.pending }
+                });
+            }
+        }
+
+        // Compare total job counts
+        if (database.totalJobs !== undefined && api.status?.jobs?.total !== undefined) {
+            if (database.totalJobs !== api.status.jobs.total) {
+                this.results.discrepancies.push({
+                    type: 'total_job_count_mismatch',
+                    severity: 'medium',
+                    description: `Database shows ${database.totalJobs} total jobs but status endpoint shows ${api.status.jobs.total} total jobs`,
+                    sources: { database: database.totalJobs, status: api.status.jobs.total }
+                });
+            }
+        }
+
+        // Compare node counts (database vs API)
         if (database.activeNodes !== undefined && api.activeNodes !== undefined) {
             if (database.activeNodes !== api.activeNodes) {
                 this.results.discrepancies.push({
@@ -207,6 +231,18 @@ class DataConsistencyChecker {
                     severity: 'medium',
                     description: `Database shows ${database.activeNodes} active nodes but API shows ${api.activeNodes} active nodes`,
                     sources: { database: database.activeNodes, api: api.activeNodes }
+                });
+            }
+        }
+
+        // Compare total node counts
+        if (database.totalNodes !== undefined && api.status?.nodes?.total !== undefined) {
+            if (database.totalNodes !== api.status.nodes.total) {
+                this.results.discrepancies.push({
+                    type: 'total_node_count_mismatch',
+                    severity: 'medium',
+                    description: `Database shows ${database.totalNodes} total nodes but status endpoint shows ${api.status.nodes.total} total nodes`,
+                    sources: { database: database.totalNodes, status: api.status.nodes.total }
                 });
             }
         }
@@ -264,8 +300,13 @@ class DataConsistencyChecker {
             }
             
             console.log('\n📋 DATA SOURCES COMPARISON:');
-            console.log(`   Database: ${this.results.sources.database.pendingJobs || 0} pending jobs, ${this.results.sources.database.activeNodes || 0} active nodes`);
-            console.log(`   API:      ${this.results.sources.api.availableJobs || 0} available jobs, ${this.results.sources.api.activeNodes || 0} active nodes`);
+            console.log(`   Database:     ${this.results.sources.database.pendingJobs || 0} pending jobs, ${this.results.sources.database.totalJobs || 0} total jobs, ${this.results.sources.database.activeNodes || 0} active nodes`);
+            console.log(`   API:          ${this.results.sources.api.availableJobs || 0} available jobs, ${this.results.sources.api.activeNodes || 0} active nodes`);
+            
+            if (this.results.sources.api.status) {
+                const status = this.results.sources.api.status;
+                console.log(`   Status API:   ${status.jobs?.pending || 0} pending jobs, ${status.jobs?.total || 0} total jobs, ${status.nodes?.active || 0}/${status.nodes?.total || 0} active/total nodes`);
+            }
             
             // Save detailed results
             const outputFile = `consistency-check-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
