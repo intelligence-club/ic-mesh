@@ -631,6 +631,16 @@ suite.test('GET /api/tickets lists support tickets', async () => {
   suite.assert(res.data.error, 'Should return error message');
 });
 
+suite.test('POST /api/create_api_key creates API key', async () => {
+  const res = await suite.request('POST', '/api/create_api_key');
+  suite.assertEqual(res.status, 200, 'Should create API key successfully');
+  suite.assert(res.data.api_key, 'Should return api_key field');
+  suite.assert(res.data.api_key.startsWith('ic_'), 'API key should have ic_ prefix');
+  suite.assert(res.data.created, 'Should return created timestamp');
+  suite.assert(res.data.note, 'Should return security note');
+  suite.assertEqual(res.data.api_key.length, 67, 'API key should be correct length (ic_ + 64 hex chars)');
+});
+
 suite.test('POST /nodes/onboard Stripe Connect onboarding', async () => {
   const onboardData = {
     nodeId: 'onboard-test-node-' + Date.now(),
