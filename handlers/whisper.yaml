@@ -1,0 +1,35 @@
+# Whisper — Speech-to-text transcription
+capability: whisper
+namespace: whisper.cpp
+aliases: [transcription, transcribe, stt]
+description: "Speech-to-text via whisper.cpp / whisper-cli"
+
+detect:
+  binary: whisper-cli
+  fallback_binaries: [whisper, whisper-cpp]
+
+models:
+  scan_dirs:
+    - ~/.cache/whisper
+    - ~/Library/Caches/whisper
+    - /usr/local/share/whisper/models
+    - ~/.local/share/whisper
+  pattern: "ggml-*.bin"
+  parse_name: "ggml-(?<name>.+)\\.bin"
+
+invoke:
+  cmd: "whisper-cli -m {model_path} -f {input} --no-timestamps -t {threads} -otxt"
+  output: file
+  output_file: "{input}.txt"
+  result_type: text
+
+resources:
+  timeout: 600
+  max_input_mb: 500
+  min_ram_mb: 1024
+  concurrent: 1
+
+benchmark:
+  expected_output: "the quick brown fox jumps over the lazy dog"
+  match_threshold: 0.7
+  timeout: 30

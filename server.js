@@ -176,14 +176,15 @@ db.exec(`
 
 // Add progress column if missing (migration)
 try { db.exec('ALTER TABLE jobs ADD COLUMN progress TEXT'); } catch(e) {}
+try { db.exec('ALTER TABLE nodes ADD COLUMN manifests TEXT DEFAULT \'{}\''); } catch(e) {}
 
 // ===== PREPARED STATEMENTS =====
 const stmts = {
   upsertNode: db.prepare(`
-    INSERT INTO nodes (nodeId, name, ip, capabilities, models, cpuCores, ramMB, ramFreeMB, cpuIdle, gpuVRAM, diskFreeGB, owner, region, lastSeen, registeredAt)
-    VALUES (@nodeId, @name, @ip, @capabilities, @models, @cpuCores, @ramMB, @ramFreeMB, @cpuIdle, @gpuVRAM, @diskFreeGB, @owner, @region, @lastSeen, @registeredAt)
+    INSERT INTO nodes (nodeId, name, ip, capabilities, models, manifests, cpuCores, ramMB, ramFreeMB, cpuIdle, gpuVRAM, diskFreeGB, owner, region, lastSeen, registeredAt)
+    VALUES (@nodeId, @name, @ip, @capabilities, @models, @manifests, @cpuCores, @ramMB, @ramFreeMB, @cpuIdle, @gpuVRAM, @diskFreeGB, @owner, @region, @lastSeen, @registeredAt)
     ON CONFLICT(nodeId) DO UPDATE SET
-      name=@name, ip=@ip, capabilities=@capabilities, models=@models,
+      name=@name, ip=@ip, capabilities=@capabilities, models=@models, manifests=@manifests,
       cpuCores=@cpuCores, ramMB=@ramMB, ramFreeMB=@ramFreeMB, cpuIdle=@cpuIdle,
       gpuVRAM=@gpuVRAM, diskFreeGB=@diskFreeGB, owner=@owner, region=@region, lastSeen=@lastSeen
   `),
@@ -326,6 +327,7 @@ function nodeToJSON(row) {
     nodeId: row.nodeId, name: row.name, ip: row.ip,
     capabilities: JSON.parse(row.capabilities || '[]'),
     models: JSON.parse(row.models || '[]'),
+    manifests: JSON.parse(row.manifests || '{}'),
     resources: {
       cpuCores: row.cpuCores, ramMB: row.ramMB, ramFreeMB: row.ramFreeMB,
       cpuIdle: row.cpuIdle, gpuVRAM: row.gpuVRAM, diskFreeGB: row.diskFreeGB
@@ -364,6 +366,7 @@ function registerNode(data) {
     nodeId: id, name: data.name || 'unnamed', ip: data.ip || 'unknown',
     capabilities: JSON.stringify(data.capabilities || []),
     models: JSON.stringify(data.models || []),
+    manifests: JSON.stringify(data.manifests || {}),
     cpuCores: data.cpuCores || 0, ramMB: data.ramMB || 0,
     ramFreeMB: data.ramFreeMB || 0, cpuIdle: data.cpuIdle || 0,
     gpuVRAM: data.gpuVRAM || 0, diskFreeGB: data.diskFreeGB || 0,
@@ -862,10 +865,23 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       
-      // Validate job type
-      const VALID_JOB_TYPES = ['transcribe', 'generate-image', 'ffmpeg', 'inference', 'ocr', 'pdf-extract'];
-      if (!data.type || !VALID_JOB_TYPES.includes(data.type)) {
-        return json(res, { error: `Invalid job type. Must be one of: ${VALID_JOB_TYPES.join(', ')}`, valid_types: VALID_JOB_TYPES }, 400);
+      // Validate job type — built-in + any type registered by active nodes
+      const BUILTIN_JOB_TYPES = ['transcribe', 'generate-image', 'ffmpeg', 'inference', 'ocr', 'pdf-extract', 'ping'];
+      const registeredTypes = new Set(BUILTIN_JOB_TYPES);
+      // Add any capability declared by active nodes (enables custom handler types)
+      try {
+        const activeNodes = stmts.getActiveNodes.all(Date.now() - 120000);
+        for (const n of activeNodes) {
+          for (const cap of JSON.parse(n.capabilities || '[]')) registeredTypes.add(cap);
+          // Also add aliases from manifests
+          const manifests = JSON.parse(n.manifests || '{}');
+          for (const m of Object.values(manifests)) {
+            if (m.aliases) for (const a of m.aliases) registeredTypes.add(a);
+          }
+        }
+      } catch {}
+      if (!data.type || !registeredTypes.has(data.type)) {
+        return json(res, { error: `Unknown job type '${data.type}'. Known types: ${[...registeredTypes].sort().join(', ')}`, valid_types: [...registeredTypes].sort() }, 400);
       }
       if (!data.payload || typeof data.payload !== 'object') {
         return json(res, { 

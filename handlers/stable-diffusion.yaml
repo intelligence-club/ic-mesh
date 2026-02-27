@@ -1,0 +1,27 @@
+# Stable Diffusion — Image generation via A1111 API
+capability: stable-diffusion
+namespace: a1111
+aliases: [generate-image, sd, txt2img]
+description: "Image generation via Stable Diffusion (A1111 WebUI)"
+
+detect:
+  probe_url: "http://localhost:7860/sdapi/v1/sd-models"
+  fallback_urls:
+    - "http://localhost:7861/sdapi/v1/sd-models"
+
+models:
+  list_url: "http://localhost:7860/sdapi/v1/sd-models"
+  parse_json: ".[].model_name"
+
+invoke:
+  cmd: "curl -s http://localhost:7860/sdapi/v1/txt2img -H 'Content-Type: application/json' -d @{input}"
+  stdin: json
+  output: stdout
+  result_type: json
+
+resources:
+  timeout: 900
+  min_ram_mb: 4096
+  gpu_required: true
+  gpu_backends: [metal, cuda]
+  concurrent: 1

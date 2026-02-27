@@ -1,0 +1,24 @@
+# ComfyUI — Advanced image generation with node-based workflows
+capability: comfyui
+namespace: comfyui
+aliases: [comfy, workflow]
+description: "Image/video generation via ComfyUI node workflows"
+
+detect:
+  probe_url: "http://localhost:8188/system_stats"
+
+models:
+  list_url: "http://localhost:8188/object_info"
+  parse_json: "keys"
+
+invoke:
+  cmd: "curl -s http://localhost:8188/prompt -H 'Content-Type: application/json' -d @{input}"
+  stdin: json
+  output: stdout
+  result_type: json
+
+resources:
+  timeout: 900
+  min_ram_mb: 8192
+  gpu_required: true
+  concurrent: 1

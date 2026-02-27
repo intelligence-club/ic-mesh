@@ -25,6 +25,10 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 const WebSocket = require('ws');
+const { scanCapabilities, executeFromSpec, loadHandlerSpecs, detectCapability } = require('./lib/handler-loader');
+
+// ===== Handler Specs (loaded once at startup) =====
+let handlerScan = null; // populated in init()
 
 // ===== Configuration =====
 
@@ -218,39 +222,42 @@ function getDiskFree() {
 }
 
 function getCapabilities() {
-  const caps = [];
-  const which = (cmd) => { try { execSync(`which ${cmd}`, { encoding: 'utf8', timeout: 3000 }); return true; } catch { return false; } };
-  const httpOk = (url) => {
-    try {
-      return execSync(`curl -s -o /dev/null -w "%{http_code}" "${url}" --max-time 2`, { encoding: 'utf8', timeout: 5000 }).trim() === '200';
-    } catch { return false; }
-  };
+  // Primary: YAML handler specs (declarative)
+  if (!handlerScan) {
+    handlerScan = scanCapabilities();
+    console.log(`◉ Handler scan: ${handlerScan.specsLoaded} specs loaded, ${Object.keys(handlerScan.manifests).length} detected, ${handlerScan.skipped.length} skipped`);
+    if (handlerScan.skipped.length > 0) console.log(`  Skipped: ${handlerScan.skipped.join(', ')}`);
+    for (const [name, manifest] of Object.entries(handlerScan.manifests)) {
+      console.log(`  ✓ ${name}: ${manifest.models.length} models, backends: ${manifest.backends.join(',')}`);
+    }
+  }
 
-  // Auto-detected capabilities
-  if (which('ollama')) caps.push('ollama');
-  if (which('whisper')) caps.push('whisper');
-  if (which('ffmpeg')) caps.push('ffmpeg');
-  if (which('tesseract')) caps.push('tesseract');
-  if (which('nvidia-smi')) caps.push('gpu-nvidia');
+  const caps = [...handlerScan.capabilities];
 
+  // Legacy: hardcoded detection for capabilities without YAML specs
+  const which = (cmd) => { try { execSync(`which ${cmd}`, { encoding: 'utf8', timeout: 3000, stdio: 'pipe' }); return true; } catch { return false; } };
+
+  // ffmpeg and gpu detection don't have YAML specs yet — keep as legacy
+  if (which('ffmpeg') && !caps.includes('ffmpeg')) caps.push('ffmpeg');
+  if (which('nvidia-smi') && !caps.includes('gpu-nvidia')) caps.push('gpu-nvidia');
   try {
     if (execSync('uname -m', { encoding: 'utf8', timeout: 3000 }).trim() === 'arm64' && process.platform === 'darwin')
-      caps.push('gpu-metal');
+      if (!caps.includes('gpu-metal')) caps.push('gpu-metal');
   } catch {}
 
-  if (httpOk('http://localhost:7860/sdapi/v1/sd-models') || httpOk('http://localhost:7861/sdapi/v1/sd-models')) caps.push('stable-diffusion');
-  if (httpOk('http://localhost:8188/system_stats')) caps.push('comfyui');
-
-  // Add capabilities from enabled handlers
+  // Add capabilities from node-config.json handlers (legacy config format)
   if (config.handlers) {
     for (const [handlerName, handlerConfig] of Object.entries(config.handlers)) {
-      if (handlerConfig.enabled !== false) {
+      if (handlerConfig.enabled !== false && !caps.includes(handlerName)) {
         caps.push(handlerName);
       }
     }
   }
 
-  return [...new Set(caps)]; // Remove duplicates
+  // Always include ping
+  if (!caps.includes('ping')) caps.push('ping');
+
+  return [...new Set(caps)];
 }
 
 function getOllamaModels() {
@@ -539,12 +546,31 @@ async function runCustomHandler(job) {
 // ===== Job Handlers =====
 
 async function executeJob(job) {
-  // Check if we have a custom handler for this job type
+  // Priority 1: YAML handler specs (declarative)
+  if (handlerScan?.manifests) {
+    // Direct match
+    let spec = handlerScan.manifests[job.type];
+    // Try alias match
+    if (!spec) {
+      for (const [name, manifest] of Object.entries(handlerScan.manifests)) {
+        if (manifest.aliases?.includes(job.type)) {
+          spec = loadHandlerSpecs()[name];
+          break;
+        }
+      }
+    }
+    if (spec) {
+      console.log(`  → YAML handler: ${spec.capability} (${spec._file})`);
+      return await executeFromSpec(spec, job);
+    }
+  }
+
+  // Priority 2: node-config.json custom handlers (legacy)
   if (config.handlers && config.handlers[job.type] && config.handlers[job.type].enabled !== false) {
     return await runCustomHandler(job);
   }
   
-  // Fall back to built-in handlers
+  // Priority 3: built-in handlers (hardcoded)
   switch (job.type) {
     case 'inference': return await runInference(job.payload, getJobTimeout(job));
     case 'transcribe': return await runTranscribe(job.payload, getJobTimeout(job));
@@ -1073,12 +1099,17 @@ async function checkin() {
   const resources = checkResourceLimits();
   const scheduleActive = isScheduleActive();
 
+  // Build rich capability manifests from YAML specs
+  const capabilityManifests = handlerScan?.manifests || {};
+
   const result = await meshFetch('/nodes/register', {
     method: 'POST',
     body: JSON.stringify({
       nodeId, name: NODE_NAME, owner: NODE_OWNER, region: NODE_REGION,
       capabilities, models, version: getLocalVersion(), 
       ...sysInfo,
+      // Rich capability manifests (protocol v2)
+      manifests: capabilityManifests,
       // Enhanced registration data
       config: {
         maxConcurrentJobs: config.limits.maxConcurrentJobs,
