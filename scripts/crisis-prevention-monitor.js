@@ -27,6 +27,77 @@ class CrisisPreventionMonitor {
         };
     }
 
+    async sendCrisisNotifications(status) {
+        const alertData = {
+            timestamp: new Date().toISOString(),
+            severity: status.severity,
+            message: status.message,
+            actions: status.actions,
+            urgency: 'IMMEDIATE_HUMAN_INTERVENTION_REQUIRED'
+        };
+
+        // Create highly visible file alert
+        fs.writeFileSync('URGENT-SERVICE-OUTAGE.json', JSON.stringify(alertData, null, 2));
+        
+        // Write human-readable alert file
+        const alertMessage = `🚨 CRITICAL SERVICE OUTAGE ALERT 🚨
+
+${status.message}
+
+Actions Required:
+${status.actions.map(action => `- ${action}`).join('\n')}
+
+Time: ${alertData.timestamp}
+Severity: ${status.severity}
+
+This is an automated alert from Crisis Prevention Monitor.
+`;
+        fs.writeFileSync('CRISIS-ALERT.txt', alertMessage);
+
+        // Console notification (high visibility)
+        console.error('\n' + '🚨'.repeat(20));
+        console.error('CRITICAL SERVICE OUTAGE DETECTED');
+        console.error('🚨'.repeat(20));
+        console.error(status.message);
+        console.error('\nActions Required:');
+        status.actions.forEach(action => console.error(`- ${action}`));
+        console.error('🚨'.repeat(20) + '\n');
+
+        // Future: Add webhook notifications, Telegram bot, email alerts
+        // Can be configured via environment variables
+        if (process.env.CRISIS_WEBHOOK_URL) {
+            try {
+                const response = await fetch(process.env.CRISIS_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(alertData)
+                });
+                this.log(`Webhook notification sent: ${response.status}`);
+            } catch (error) {
+                this.log(`Webhook notification failed: ${error.message}`);
+            }
+        }
+
+        if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
+            try {
+                const telegramMessage = `🚨 IC MESH CRISIS ALERT\n\n${status.message}\n\nActions:\n${status.actions.map(a => `• ${a}`).join('\n')}`;
+                const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+                const response = await fetch(telegramUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: process.env.TELEGRAM_CHAT_ID,
+                        text: telegramMessage,
+                        parse_mode: 'Markdown'
+                    })
+                });
+                this.log(`Telegram notification sent: ${response.status}`);
+            } catch (error) {
+                this.log(`Telegram notification failed: ${error.message}`);
+            }
+        }
+    }
+
     log(message) {
         const timestamp = new Date().toISOString();
         const logEntry = `${timestamp} - ${message}\\n`;
@@ -178,8 +249,8 @@ class CrisisPreventionMonitor {
         
         fs.writeFileSync('URGENT-SERVICE-OUTAGE.json', JSON.stringify(alertData, null, 2));
         
-        // TODO: Implement actual notification system (email, SMS, webhooks)
-        // For now, create highly visible files
+        // Send notifications via multiple channels
+        await sendCrisisNotifications(status);
         const alertMessage = `🚨 CRITICAL SERVICE OUTAGE ALERT 🚨
 
 ${status.message}
