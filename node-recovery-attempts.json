@@ -131,8 +131,30 @@
       "recoveredNodes": 0,
       "remainingTargets": 2,
       "success": false
+    },
+    {
+      "timestamp": "2026-02-27T07:43:12.135Z",
+      "initialTargets": 2,
+      "recoveryMethods": [
+        {
+          "success": true,
+          "method": "websocket_ping"
+        },
+        {
+          "success": true,
+          "method": "server_restart",
+          "note": "Already running"
+        },
+        {
+          "success": true,
+          "method": "database_cleanup"
+        }
+      ],
+      "recoveredNodes": 0,
+      "remainingTargets": 2,
+      "success": false
     }
   ],
   "successfulRecoveries": 0,
-  "lastRun": "2026-02-27T07:28:23.148Z"
+  "lastRun": "2026-02-27T07:43:12.136Z"
 }

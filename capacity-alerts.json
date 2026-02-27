@@ -870,5 +870,150 @@
       "completedJobs": 67,
       "serviceAvailability": "outage"
     }
+  },
+  {
+    "timestamp": "2026-02-27T07:41:55.653Z",
+    "alerts": [
+      {
+        "severity": "critical",
+        "type": "complete_outage",
+        "message": "COMPLETE SERVICE OUTAGE: 0/5 nodes active",
+        "details": {
+          "pendingJobs": 124,
+          "impact": "All customer jobs blocked"
+        }
+      },
+      {
+        "severity": "high",
+        "type": "critical_node_offline",
+        "message": "Critical node \"unnamed\" offline for 11 minutes",
+        "details": {
+          "nodeId": "5ef95d698bdfa57a",
+          "jobsCompleted": 119,
+          "capabilities": [
+            "transcription"
+          ],
+          "owner": "unknown",
+          "lastSeen": "2026-02-27 07:30:19"
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"ffmpeg\" has 0/3 active nodes",
+        "details": {
+          "capability": "ffmpeg",
+          "totalNodes": 3,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"gpu-metal\" has 0/3 active nodes",
+        "details": {
+          "capability": "gpu-metal",
+          "totalNodes": 3,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"stable-diffusion\" has 0/1 active nodes",
+        "details": {
+          "capability": "stable-diffusion",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"whisper\" has 0/2 active nodes",
+        "details": {
+          "capability": "whisper",
+          "totalNodes": 2,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"transcription\" has 0/1 active nodes",
+        "details": {
+          "capability": "transcription",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"ollama\" has 0/1 active nodes",
+        "details": {
+          "capability": "ollama",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"tesseract\" has 0/1 active nodes",
+        "details": {
+          "capability": "tesseract",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"transcribe\" has 0/1 active nodes",
+        "details": {
+          "capability": "transcribe",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"generate\" has 0/1 active nodes",
+        "details": {
+          "capability": "generate",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"test\" has 0/1 active nodes",
+        "details": {
+          "capability": "test",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "medium",
+        "type": "job_backlog",
+        "message": "Job backlog: 124 pending jobs",
+        "details": {
+          "pendingJobs": 124,
+          "activeNodes": 0,
+          "jobsPerNode": "infinite"
+        }
+      }
+    ],
+    "networkState": {
+      "activeNodes": 0,
+      "totalNodes": 5,
+      "pendingJobs": 124,
+      "completedJobs": 68,
+      "serviceAvailability": "outage"
+    }
   }
 ]
