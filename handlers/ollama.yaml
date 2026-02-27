@@ -1,0 +1,23 @@
+# Ollama — LLM inference
+capability: ollama
+namespace: ollama
+aliases: [inference, llm, chat]
+description: "LLM inference via Ollama"
+
+detect:
+  binary: ollama
+  probe_cmd: "ollama list"
+
+models:
+  list_cmd: "ollama list 2>/dev/null | tail -n +2 | awk '{print $1}'"
+
+invoke:
+  cmd: "ollama run {model_name} < {input}"
+  stdin: raw
+  output: stdout
+  result_type: text
+
+resources:
+  timeout: 300
+  min_ram_mb: 4096
+  concurrent: 1

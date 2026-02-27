@@ -1,0 +1,20 @@
+# Tesseract — OCR / text extraction from images
+capability: tesseract
+namespace: tesseract
+aliases: [ocr, pdf-extract]
+description: "OCR text extraction via Tesseract"
+
+detect:
+  binary: tesseract
+  probe_cmd: "tesseract --version"
+
+invoke:
+  cmd: "tesseract {input} {output_dir}/output -l eng"
+  output: file
+  output_file: "{output_dir}/output.txt"
+  result_type: text
+
+resources:
+  timeout: 120
+  max_input_mb: 50
+  concurrent: 2
