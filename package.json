@@ -61,7 +61,10 @@
     "wizard": "node scripts/onboarding-wizard.js",
     "doctor": "node scripts/node-doctor.js",
     "diagnose": "node scripts/node-doctor.js",
-    "troubleshoot": "node scripts/node-doctor.js --verbose"
+    "troubleshoot": "node scripts/node-doctor.js --verbose",
+    "status:unified": "node unified-status-monitor.js",
+    "status:watch": "node unified-status-monitor.js --watch",
+    "status:json": "node unified-status-monitor.js --json"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
