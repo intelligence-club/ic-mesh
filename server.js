@@ -31,6 +31,32 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const storage = require('./lib/storage');
 const connect = require('./lib/stripe-connect');
+const EnhancedRateLimiter = require('./lib/enhanced-rate-limit');
+const logger = require('./lib/logger');
+
+const rateLimiter = new EnhancedRateLimiter({
+  whitelistFile: './config/rate-limit-whitelist.json',
+  logFile: './logs/rate-limits.log',
+  enableLogging: true
+});
+
+// ===== ERROR HANDLING UTILITIES =====
+function logError(context, error, details = {}) {
+  logger.error(context, error.message, {
+    error: error.name,
+    stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+    ...details
+  });
+}
+
+function safeJsonParse(str, defaultValue = {}, context = 'unknown') {
+  try {
+    return JSON.parse(str || '{}');
+  } catch (e) {
+    logError(`JSON parse in ${context}`, e, { input: str?.substring(0, 100) });
+    return defaultValue;
+  }
+}
 
 const PORT = process.env.PORT || 8333;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -82,7 +108,8 @@ db.exec(`
     creditAmount REAL DEFAULT 0,
     refunded INTEGER DEFAULT 0,
     ints_cost INTEGER DEFAULT 0,
-    error_message TEXT
+    error_message TEXT,
+    progress TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
   CREATE INDEX IF NOT EXISTS idx_jobs_claimedBy ON jobs(claimedBy);
@@ -146,6 +173,9 @@ db.exec(`
     last_updated TEXT DEFAULT (datetime('now'))
   );
 `);
+
+// Add progress column if missing (migration)
+try { db.exec('ALTER TABLE jobs ADD COLUMN progress TEXT'); } catch(e) {}
 
 // ===== PREPARED STATEMENTS =====
 const stmts = {
@@ -232,7 +262,10 @@ function migrateFromJSON() {
           lastSeen: n.lastSeen || Date.now(), registeredAt: n.registeredAt || Date.now()
         });
       }
-      console.log(`  Migrated ${Object.keys(nodes).length} nodes from JSON`);
+      logger.system('JSON migration', 'nodes', {
+        count: Object.keys(nodes).length,
+        source: 'nodes.json'
+      });
     }
     
     if (fs.existsSync(jobsFile)) {
@@ -251,9 +284,17 @@ function migrateFromJSON() {
           } else if (j.status === 'claimed') {
             stmts.claimJob.run(j.claimedBy, j.claimedAt, j.jobId);
           }
-        } catch(e) {} // skip dupes
+        } catch(e) {
+          // Skip duplicates during migration, but log other errors
+          if (!e.message.includes('UNIQUE constraint failed')) {
+            logError('Job migration', e, { jobId: j.jobId });
+          }
+        }
       }
-      console.log(`  Migrated ${Object.keys(jobs).length} jobs from JSON`);
+      logger.system('JSON migration', 'jobs', {
+        count: Object.keys(jobs).length,
+        source: 'jobs.json'
+      });
     }
     
     if (fs.existsSync(ledgerFile)) {
@@ -261,10 +302,16 @@ function migrateFromJSON() {
       for (const [id, l] of Object.entries(ledger)) {
         stmts.upsertLedger.run(id, l.earned || 0, l.spent || 0, l.jobs || 0, 0, 0, 0);
       }
-      console.log(`  Migrated ${Object.keys(ledger).length} ledger entries from JSON`);
+      logger.system('JSON migration', 'ledger', {
+        count: Object.keys(ledger).length,
+        source: 'ledger.json'
+      });
     }
   } catch(e) {
-    console.log('  JSON migration skipped:', e.message);
+    logger.system('JSON migration skipped', 'migration', {
+      error: e.message,
+      reason: 'migration_error'
+    });
   }
 }
 
@@ -300,6 +347,7 @@ function jobToJSON(row) {
     createdAt: row.createdAt, claimedAt: row.claimedAt,
     completedAt: row.completedAt,
     result: row.result ? JSON.parse(row.result) : null,
+    progress: row.progress ? JSON.parse(row.progress) : null,
     computeMs: row.computeMs, creditAmount: row.creditAmount
   };
 }
@@ -338,7 +386,7 @@ function submitJob(data) {
   stmts.insertJob.run({
     jobId: id, type: data.type,
     payload: JSON.stringify(data.payload || {}),
-    requester: data.requester || '',
+    requester: data.requester || data.payload?.email || data.email || '',
     requirements: JSON.stringify(data.requirements || {}),
     createdAt: Date.now()
   });
@@ -349,15 +397,43 @@ function submitJob(data) {
   return jobToJSON(stmts.getJob.get(id));
 }
 
+// Capability alias mapping to handle naming variations
+function aliasCapability(capability) {
+  const aliases = {
+    'transcription': 'whisper',
+    'transcribe': 'whisper', 
+    'ocr': 'tesseract',
+    'pdf-extract': 'tesseract',
+    'inference': 'ollama',
+    'generate-image': 'stable-diffusion'
+  };
+  return aliases[capability] || capability;
+}
+
 function getAvailableJobs(nodeId) {
   const pending = stmts.getPendingJobs.all();
   const node = stmts.getNode.get(nodeId);
+  
+  // Check if node is quarantined
+  if (node) {
+    const flags = JSON.parse(node.flags || '{}');
+    if (flags.quarantined) {
+      // Return empty array for quarantined nodes
+      return [];
+    }
+  }
+  
   const nodeCaps = node ? JSON.parse(node.capabilities || '[]') : [];
   const nodeModels = node ? JSON.parse(node.models || '[]') : [];
   
   return pending.filter(row => {
     const req = JSON.parse(row.requirements || '{}');
-    if (req.capability && !nodeCaps.includes(req.capability)) return false;
+    if (req.capability) {
+      const requiredCap = aliasCapability(req.capability);
+      // Check if node has either the original capability OR the aliased capability (match claimJob logic)
+      const hasCapability = nodeCaps.includes(req.capability) || nodeCaps.includes(requiredCap);
+      if (!hasCapability) return false;
+    }
     if (req.model && !nodeModels.includes(req.model)) return false;
     if (req.minRAM && node && node.ramFreeMB < req.minRAM) return false;
     return true;
@@ -368,12 +444,35 @@ function claimJob(jobId, nodeId) {
   // Verify node has required capabilities before allowing claim
   const job = stmts.getJob.get(jobId);
   if (!job || job.status !== 'pending') return null;
+  
+  // Check if node is quarantined
+  const node = stmts.getNode.get(nodeId);
+  if (node) {
+    const flags = JSON.parse(node.flags || '{}');
+    if (flags.quarantined) {
+      logger.jobEvent(jobId.slice(0, 8), 'claim rejected', {
+        nodeId: nodeId.slice(0, 8),
+        reason: 'node_quarantined',
+        quarantinedAt: flags.quarantinedAt
+      });
+      return null;
+    }
+  }
+  
   const req = JSON.parse(job.requirements || '{}');
   if (req.capability) {
-    const node = stmts.getNode.get(nodeId);
     const caps = node ? JSON.parse(node.capabilities || '[]') : [];
-    if (!caps.includes(req.capability)) {
-      console.log(`  ⚠ Node ${nodeId.slice(0,8)} rejected claim on ${jobId.slice(0,8)}: missing capability '${req.capability}'`);
+    const requiredCap = aliasCapability(req.capability);
+    // Check if node has either the original capability OR the aliased capability
+    const hasCapability = caps.includes(req.capability) || caps.includes(requiredCap);
+    if (!hasCapability) {
+      logger.jobEvent(jobId.slice(0, 8), 'claim rejected', {
+        nodeId: nodeId.slice(0, 8),
+        reason: 'missing_capability',
+        requiredCapability: req.capability,
+        aliasedCapability: requiredCap,
+        nodeCapabilities: caps
+      });
       return null;
     }
   }
@@ -392,10 +491,8 @@ function completeJob(jobId, nodeId, result) {
   
   // Parse job payload to get price_ints if set by the payment system
   let priceInts = 0;
-  try {
-    const payload = JSON.parse(job.payload || '{}');
-    priceInts = parseInt(payload.price_ints) || 0;
-  } catch(e) {}
+  const payload = safeJsonParse(job.payload, {}, 'job completion payload');
+  priceInts = parseInt(payload.price_ints) || 0;
   
   // Revenue split: 80% node, 15% treasury, 5% infra (all integer ints)
   const nodeCut = Math.floor(priceInts * 80 / 100);
@@ -417,7 +514,14 @@ function completeJob(jobId, nodeId, result) {
     stmts.upsertPayout.run(nodeId, nodeCut, 1);
     stmts.upsertPayout.run('ic-treasury', treasuryCut, 0);
     stmts.upsertPayout.run('ic-infra', infraCut, 0);
-    console.log(`  💰 SPLIT: ${priceInts} ints → node ${nodeCut} / treasury ${treasuryCut} / infra ${infraCut}`);
+    logger.jobEvent(jobId.slice(0, 8), 'payment split', {
+      totalInts: priceInts,
+      nodeCut,
+      treasuryCut,
+      infraCut,
+      nodeId: nodeId.slice(0, 8),
+      type: 'payment_split'
+    });
   }
   
   const completed = jobToJSON(stmts.getJob.get(jobId));
@@ -439,21 +543,32 @@ function setupWebSocket(server) {
     const nodeId = url.searchParams.get('nodeId') || 'unknown';
     
     wsClients.set(nodeId, ws);
-    console.log(`  ⚡ WS connected: ${nodeId} (${wsClients.size} total)`);
+    logger.nodeEvent(nodeId, 'WebSocket connected', {
+      totalConnections: wsClients.size,
+      type: 'ws_connect'
+    });
     
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data);
         handleWsMessage(nodeId, msg, ws);
-      } catch(e) {}
+      } catch(e) {
+        logError('WebSocket message parsing', e, { nodeId, data: data.toString().substring(0, 100) });
+      }
     });
     
     ws.on('close', () => {
       wsClients.delete(nodeId);
-      console.log(`  ⚡ WS disconnected: ${nodeId} (${wsClients.size} total)`);
+      logger.nodeEvent(nodeId, 'WebSocket disconnected', {
+        totalConnections: wsClients.size,
+        type: 'ws_disconnect'
+      });
     });
     
-    ws.on('error', () => wsClients.delete(nodeId));
+    ws.on('error', (error) => {
+      logError('WebSocket connection', error, { nodeId });
+      wsClients.delete(nodeId);
+    });
     
     // Send pending jobs immediately
     const available = getAvailableJobs(nodeId);
@@ -483,6 +598,11 @@ function handleWsMessage(nodeId, msg, ws) {
       ws.send(JSON.stringify({ type: 'job.complete.result', jobId: msg.jobId, ok: !!completed }));
       break;
     case 'job.progress':
+      // Store progress in DB with timestamp for staleness detection
+      try {
+        const progData = { ...msg.progress, _updated: Date.now() };
+        db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(progData), msg.jobId);
+      } catch(e) {}
       broadcastEvent('job.progress', { jobId: msg.jobId, progress: msg.progress, nodeId });
       break;
   }
@@ -495,7 +615,12 @@ function broadcastToEligibleNodes(job) {
     const node = stmts.getNode.get(nodeId);
     if (!node) continue;
     const caps = JSON.parse(node.capabilities || '[]');
-    if (req.capability && !caps.includes(req.capability)) continue;
+    if (req.capability) {
+      const requiredCap = aliasCapability(req.capability);
+      // Check if node has either the original capability OR the aliased capability (match claimJob logic)
+      const hasCapability = caps.includes(req.capability) || caps.includes(requiredCap);
+      if (!hasCapability) continue;
+    }
     ws.send(JSON.stringify({ type: 'job.dispatch', job }));
   }
 }
@@ -534,13 +659,36 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Node-Id, X-Node-Secret');
   if (method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+
+  // Rate limiting - proxy-aware IP detection
+  function getClientIp(req) {
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() 
+      || req.headers['x-real-ip'] 
+      || req.socket.remoteAddress 
+      || 'unknown';
+  }
+  const clientIp = getClientIp(req);
+  const rlGroup = method === 'POST' && pathname === '/upload' ? 'upload'
+    : method === 'POST' && pathname === '/jobs' ? 'jobs-post'
+    : method === 'POST' && pathname === '/nodes/register' ? 'nodes-register'
+    : 'default';
+  const rl = rateLimiter.check(clientIp, rlGroup);
+  if (!rl.allowed) {
+    res.setHeader('Retry-After', String(rl.retryAfter));
+    return json(res, { 
+      error: 'Rate limit exceeded', 
+      detail: `Too many requests from ${clientIp}`, 
+      retry_after: rl.retryAfter,
+      suggestion: `Wait ${rl.retryAfter} seconds before retrying`
+    }, 429);
+  }
   
   try {
     // ---- Presigned Upload URL (client → Spaces direct) ----
     if (method === 'POST' && pathname === '/upload/presign') {
       const data = await parseBody(req);
       const { filename, content_type } = data;
-      if (!filename) return json(res, { error: 'filename required' }, 400);
+      if (!filename) return json(res, { error: 'Filename is required', detail: 'Include filename in request body', example: { filename: 'audio.wav' } }, 400);
       
       const id = crypto.randomBytes(8).toString('hex');
       const ext = path.extname(filename) || '.bin';
@@ -553,7 +701,7 @@ const server = http.createServer(async (req, res) => {
       const downloadUrl = await storage.getPresignedUrl(key);
       
       if (!uploadUrl) {
-        return json(res, { error: 'Spaces not configured, use POST /upload instead' }, 503);
+        return json(res, { error: 'DigitalOcean Spaces not configured', detail: 'Presigned URLs unavailable without Spaces setup', alternative: 'Use POST /upload for direct file upload instead' }, 503);
       }
       
       return json(res, {
@@ -586,23 +734,45 @@ const server = http.createServer(async (req, res) => {
             if (headerEnd > 4 && footerStart > headerEnd) {
               const fileData = body.slice(headerEnd, footerStart);
               const result = await storage.uploadFile(fileData, origFilename);
-              console.log(`  ↑ Upload: ${result.filename} (${(result.size / 1024 / 1024).toFixed(1)}MB) [${result.storage}]`);
+              logger.api('File uploaded', result.filename, {
+                sizeMB: (result.size / 1024 / 1024).toFixed(1),
+                storage: result.storage,
+                type: 'file_upload'
+              });
               return json(res, { ok: true, url: result.url, filename: result.filename, size: result.size, storage: result.storage });
             }
           }
-          json(res, { error: 'Could not parse upload' }, 400);
+          json(res, { error: 'Invalid file upload format', detail: 'File upload could not be parsed', suggestion: 'Ensure Content-Type is multipart/form-data and file is properly attached' }, 400);
         } catch(e) {
+          logError('File upload processing', e, { 
+            contentType: req.headers['content-type'], 
+            size: Buffer.concat(chunks).length 
+          });
           json(res, { error: e.message }, 500);
         }
       });
       return;
     }
 
+    // ---- Stripe Connect onboarding return redirect ----
+    if (method === 'GET' && pathname === '/onboard') {
+      const u = new URL(req.url, 'https://moilol.com');
+      const nodeId = u.searchParams.get('nodeId') || '';
+      const complete = u.searchParams.get('complete');
+      const refresh = u.searchParams.get('refresh');
+      // Redirect to the main site's onboard page with params
+      const target = complete 
+        ? `https://moilol.com/onboard.html?nodeId=${encodeURIComponent(nodeId)}&complete=true`
+        : `https://moilol.com/onboard.html?nodeId=${encodeURIComponent(nodeId)}&refresh=true`;
+      res.writeHead(302, { Location: target });
+      return res.end();
+    }
+
     // ---- File Serving ----
     if (method === 'GET' && pathname.startsWith('/files/')) {
       const filename = pathname.split('/').pop();
       const filePath = path.join(UPLOAD_DIR, filename);
-      if (!fs.existsSync(filePath)) return json(res, { error: 'Not found' }, 404);
+      if (!fs.existsSync(filePath)) return json(res, { error: 'File not found', detail: `No file named '${filename}' exists`, suggestion: 'Check filename or upload the file first' }, 404);
       const stat = fs.statSync(filePath);
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
@@ -616,7 +786,7 @@ const server = http.createServer(async (req, res) => {
     // ---- Node Registry ----
     if (method === 'POST' && pathname === '/nodes/register') {
       const data = await parseBody(req);
-      data.ip = req.socket.remoteAddress;
+      data.ip = getClientIp(req);
       const node = registerNode(data);
       return json(res, { ok: true, node });
     }
@@ -629,6 +799,67 @@ const server = http.createServer(async (req, res) => {
     // ---- Job Queue ----
     if (method === 'POST' && pathname === '/jobs') {
       const data = await parseBody(req);
+      
+      // Authentication: require API key or internal origin
+      const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+      const isInternal = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+      
+      if (!isInternal && !apiKey) {
+        return json(res, { 
+          error: 'Authentication required',
+          detail: 'Provide an API key via X-Api-Key header or Authorization: Bearer <key>',
+          signup: 'https://moilol.com/account.html'
+        }, 401);
+      }
+      
+      // Validate API key if provided (non-internal)
+      if (apiKey && !isInternal) {
+        // Forward to site server for key validation
+        try {
+          const keyCheck = await new Promise((resolve, reject) => {
+            const kr = http.request({ hostname: '127.0.0.1', port: 443, path: '/api/auth/verify-key', method: 'POST',
+              headers: { 'Content-Type': 'application/json' }, rejectUnauthorized: false
+            }, (kres) => { let d = ''; kres.on('data', c => d += c); kres.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({}); } }); });
+            kr.on('error', () => resolve({}));
+            kr.end(JSON.stringify({ key: apiKey }));
+          });
+          if (!keyCheck.valid) {
+            // Allow through for now during beta, but log
+            logger.api('Unvalidated API key', apiKey.slice(0, 8), {
+              ip: clientIp,
+              status: 'unvalidated_but_allowed',
+              phase: 'beta'
+            });
+          }
+        } catch {}
+      }
+      
+      // Validate job type
+      const VALID_JOB_TYPES = ['transcribe', 'generate-image', 'ffmpeg', 'inference', 'ocr', 'pdf-extract'];
+      if (!data.type || !VALID_JOB_TYPES.includes(data.type)) {
+        return json(res, { error: `Invalid job type. Must be one of: ${VALID_JOB_TYPES.join(', ')}`, valid_types: VALID_JOB_TYPES }, 400);
+      }
+      if (!data.payload || typeof data.payload !== 'object') {
+        return json(res, { 
+          error: 'Job payload must be an object', 
+          detail: 'Provide job-specific parameters in the payload field',
+          example: { type: 'transcribe', payload: { audio_url: 'https://example.com/audio.wav', language: 'en' } }
+        }, 400);
+      }
+      
+      // Sanitize payload — strip dangerous characters from string values
+      const sanitizeObj = (obj) => {
+        if (typeof obj === 'string') return obj.replace(/<script/gi, '&lt;script').replace(/javascript:/gi, '');
+        if (Array.isArray(obj)) return obj.map(sanitizeObj);
+        if (obj && typeof obj === 'object') {
+          const clean = {};
+          for (const [k, v] of Object.entries(obj)) clean[k] = sanitizeObj(v);
+          return clean;
+        }
+        return obj;
+      };
+      data.payload = sanitizeObj(data.payload);
+      
       const job = submitJob(data);
       return json(res, { ok: true, job });
     }
@@ -636,7 +867,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname.match(/^\/jobs\/[a-f0-9]+$/) && !pathname.includes('/available')) {
       const jobId = pathname.split('/')[2];
       const row = stmts.getJob.get(jobId);
-      if (!row) return json(res, { error: 'Job not found' }, 404);
+      if (!row) return json(res, { error: 'Job not found', detail: `No job exists with ID '${jobId}'`, suggestion: 'Check the job ID or submit a new job' }, 404);
       return json(res, { job: jobToJSON(row) });
     }
     
@@ -649,10 +880,22 @@ const server = http.createServer(async (req, res) => {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);
       const job = claimJob(jobId, data.nodeId);
-      if (!job) return json(res, { error: 'Job not available' }, 409);
+      if (!job) return json(res, { error: 'Job not available for claiming', detail: 'Job may be already claimed, completed, or not exist', suggestion: 'Check job status with GET /jobs/{id}' }, 409);
       return json(res, { ok: true, job });
     }
     
+    // Progress update from node (HTTP polling clients)
+    if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/progress$/)) {
+      const jobId = pathname.split('/')[2];
+      const data = await parseBody(req);
+      try {
+        const progData = { ...(data.progress || data), _updated: Date.now() };
+        db.prepare('UPDATE jobs SET progress = ? WHERE jobId = ?').run(JSON.stringify(progData), jobId);
+      } catch(e) {}
+      broadcastEvent('job.progress', { jobId, progress: data.progress || data, nodeId: data.nodeId });
+      return json(res, { ok: true });
+    }
+
     if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/complete$/)) {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);
@@ -666,8 +909,8 @@ const server = http.createServer(async (req, res) => {
       const jobId = pathname.split('/')[2];
       const data = await parseBody(req);
       const job = stmts.getJob.get(jobId);
-      if (!job) return json(res, { error: 'Job not found' }, 404);
-      if (data.nodeId && job.claimedBy !== data.nodeId) return json(res, { error: 'Not your job' }, 403);
+      if (!job) return json(res, { error: 'Job not found for failure reporting', detail: `No job exists with ID '${jobId}'`, suggestion: 'Verify the job ID is correct' }, 404);
+      if (data.nodeId && job.claimedBy !== data.nodeId) return json(res, { error: 'Job ownership mismatch', detail: `Job ${jobId} is not claimed by node ${data.nodeId}`, current_owner: job.claimedBy }, 403);
       stmts.failJob.run(JSON.stringify({ error: data.error || 'Client reported failure' }), jobId);
       return json(res, { ok: true, job: jobToJSON(stmts.getJob.get(jobId)) });
     }
@@ -700,11 +943,40 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // ---- Earnings by email (aggregate across all nodes) ----
+    if (method === 'GET' && pathname === '/earnings') {
+      const email = url.searchParams.get('email');
+      if (!email) return json(res, { error: 'email parameter required' }, 400);
+      const nodes = db.prepare('SELECT nodeId, name FROM nodes WHERE payout_email = ?').all(email.toLowerCase().trim());
+      let totalEarned = 0, totalCashedOut = 0, totalJobs = 0;
+      const nodeEarnings = [];
+      for (const n of nodes) {
+        const entry = stmts.getPayout.get(n.nodeId) || { earned_ints: 0, cashed_out_ints: 0, jobs_paid: 0 };
+        totalEarned += entry.earned_ints;
+        totalCashedOut += entry.cashed_out_ints || 0;
+        totalJobs += entry.jobs_paid || 0;
+        if (entry.earned_ints > 0) {
+          nodeEarnings.push({ nodeId: n.nodeId, name: n.name, earned_ints: entry.earned_ints, cashed_out_ints: entry.cashed_out_ints || 0, jobs_paid: entry.jobs_paid || 0 });
+        }
+      }
+      const available = totalEarned - totalCashedOut;
+      return json(res, {
+        email,
+        total_earned_ints: totalEarned,
+        total_cashed_out_ints: totalCashedOut,
+        available_ints: available,
+        available_usd: (available * 0.0008).toFixed(2),
+        earned_usd: (totalEarned * 0.0008).toFixed(2),
+        total_jobs: totalJobs,
+        nodes: nodeEarnings
+      });
+    }
+
     // ---- Node onboarding (Stripe Connect) ----
     if (method === 'POST' && pathname === '/nodes/onboard') {
       const data = await parseBody(req);
       const { nodeId, email, country } = data;
-      if (!nodeId || !email) return json(res, { error: 'nodeId and email required' }, 400);
+      if (!nodeId || !email) return json(res, { error: 'Node onboarding requires nodeId and email', detail: 'Both fields are mandatory for Stripe Connect setup', example: { nodeId: 'node-123', email: 'operator@example.com' } }, 400);
       
       const node = stmts.getNode.get(nodeId);
       if (!node) return json(res, { error: 'Node not found. Register first.' }, 404);
@@ -728,12 +1000,44 @@ const server = http.createServer(async (req, res) => {
       try {
         const result = await connect.createConnectedAccount(nodeId, email, country || 'US');
         db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?').run(result.stripe_account_id, email, nodeId);
-        console.log(`◉ STRIPE CONNECT: ${node.name} (${nodeId.slice(0,8)}) → ${result.stripe_account_id}`);
+        logger.nodeEvent(nodeId.slice(0, 8), 'Stripe Connect success', {
+          nodeName: node.name,
+          stripeAccountId: result.stripe_account_id,
+          email: email,
+          country: country || 'US'
+        });
         return json(res, { ok: true, ...result });
       } catch (e) {
-        console.log(`⚠ Stripe Connect error: ${e.message}`);
+        logger.api('Stripe Connect error', nodeId.slice(0, 8), {
+          error: e.message,
+          email: email,
+          country: country || 'US'
+        });
         return json(res, { error: 'Stripe onboarding failed: ' + e.message }, 500);
       }
+    }
+
+    // ---- Link existing Stripe account to another node (multi-node operators) ----
+    if (method === 'POST' && pathname === '/nodes/link-stripe') {
+      const data = await parseBody(req);
+      const { nodeId, sourceNodeId } = data;
+      if (!nodeId || !sourceNodeId) return json(res, { error: 'nodeId and sourceNodeId required' }, 400);
+      const target = stmts.getNode.get(nodeId);
+      const source = stmts.getNode.get(sourceNodeId);
+      if (!target) return json(res, { error: 'Target node not found' }, 404);
+      if (!source) return json(res, { error: 'Source node not found' }, 404);
+      if (!source.stripe_account_id) return json(res, { error: 'Source node has no Stripe account' }, 400);
+      // Verify same owner
+      if (source.owner !== target.owner) return json(res, { error: 'Nodes must have the same owner' }, 403);
+      db.prepare('UPDATE nodes SET stripe_account_id = ?, payout_email = ? WHERE nodeId = ?')
+        .run(source.stripe_account_id, source.payout_email || '', nodeId);
+      logger.nodeEvent(nodeId.slice(0, 8), 'Stripe account linked', {
+        targetNode: target.name,
+        sourceNode: source.name,
+        sourceNodeId: sourceNodeId.slice(0, 8),
+        stripeAccountId: source.stripe_account_id
+      });
+      return json(res, { ok: true, nodeId, linked_from: sourceNodeId, stripe_account_id: source.stripe_account_id });
     }
 
     // ---- Node onboarding status ----
@@ -781,7 +1085,12 @@ const server = http.createServer(async (req, res) => {
           const status = await connect.checkAccountStatus(node.stripe_account_id);
           if (status.payouts_enabled) {
             transferResult = await connect.transferToNode(node.stripe_account_id, requestedInts, nodeId);
-            console.log(`◉ STRIPE TRANSFER: ${nodeId.slice(0,8)} → ${requestedInts} ints ($${amountUsd}) → ${transferResult.transfer_id}`);
+            logger.nodeEvent(nodeId.slice(0, 8), 'Stripe transfer completed', {
+              amount: requestedInts,
+              amountUsd: amountUsd,
+              transferId: transferResult.transfer_id,
+              stripeAccountId: node.stripe_account_id
+            });
           }
         } catch (e) {
           console.log(`⚠ Stripe transfer failed: ${e.message}`);
@@ -819,7 +1128,15 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname.match(/^\/cashouts\/.+$/)) {
       const nodeId = pathname.split('/')[2];
       const cashouts = db.prepare('SELECT * FROM cashouts WHERE nodeId = ? ORDER BY created DESC LIMIT 50').all(nodeId);
-      return json(res, { nodeId, cashouts });
+      // Enrich with Stripe transfer history if onboarded
+      let stripeTransfers = [];
+      const node = stmts.getNode.get(nodeId);
+      if (node?.stripe_account_id) {
+        try {
+          stripeTransfers = await connect.getTransferHistory(node.stripe_account_id, 20);
+        } catch {}
+      }
+      return json(res, { nodeId, cashouts, stripe_transfers: stripeTransfers });
     }
 
     // ---- Admin: process cashout ----
@@ -827,7 +1144,7 @@ const server = http.createServer(async (req, res) => {
       const cashoutId = pathname.split('/')[2];
       const data = await parseBody(req);
       if (req.headers['x-admin-key'] !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
-        return json(res, { error: 'Unauthorized' }, 401);
+        return json(res, { error: 'Admin authorization required for cashout processing', detail: 'Valid X-Admin-Key header required', help: 'Contact system administrator for access credentials' }, 401);
       }
       db.prepare(`UPDATE cashouts SET status = ?, processed = datetime('now'), payout_method = ? WHERE id = ?`).run(
         data.status || 'completed', data.method || 'manual', cashoutId
@@ -861,13 +1178,26 @@ const server = http.createServer(async (req, res) => {
       
       const allCaps = new Set();
       const allModels = new Set();
+      const modelsByService = {};
       let totalRAM = 0, totalCores = 0;
       for (const node of Object.values(active)) {
         (node.capabilities || []).forEach(c => allCaps.add(c));
-        (node.models || []).forEach(m => allModels.add(m));
+        const nodeModels = node.models || [];
+        if (Array.isArray(nodeModels)) {
+          nodeModels.forEach(m => allModels.add(m));
+        } else if (typeof nodeModels === 'object') {
+          for (const [svc, mList] of Object.entries(nodeModels)) {
+            if (Array.isArray(mList)) {
+              if (!modelsByService[svc]) modelsByService[svc] = new Set();
+              mList.forEach(m => { allModels.add(`${svc}:${m}`); modelsByService[svc].add(m); });
+            }
+          }
+        }
         totalRAM += node.resources?.ramMB || 0;
         totalCores += node.resources?.cpuCores || 0;
       }
+      // Convert sets to arrays
+      for (const k of Object.keys(modelsByService)) modelsByService[k] = [...modelsByService[k]];
       
       return json(res, {
         network: 'Intelligence Club Mesh',
@@ -876,7 +1206,7 @@ const server = http.createServer(async (req, res) => {
         nodes: { active: activeCount, total: allNodes.length },
         compute: {
           totalCores, totalRAM_GB: Math.round(totalRAM / 1024 * 10) / 10,
-          capabilities: [...allCaps], models: [...allModels]
+          capabilities: [...allCaps], models: [...allModels], modelsByService
         },
         jobs: {
           total: Object.values(jobCounts).reduce((a, b) => a + b, 0),
@@ -899,7 +1229,7 @@ const server = http.createServer(async (req, res) => {
       
       // Validate required fields
       if (!email || !subject || !body) {
-        return json(res, { error: 'Missing required fields: email, subject, body' }, 400);
+        return json(res, { error: 'Support ticket requires email, subject, and body', detail: 'All three fields are mandatory for ticket creation', example: { email: 'user@example.com', subject: 'API Issue', body: 'Description of the problem' } }, 400);
       }
       
       // Generate ticket ID
@@ -936,7 +1266,7 @@ const server = http.createServer(async (req, res) => {
       const { email, api_key, category, subject, body, job_id, priority } = data;
       
       if (!email || !subject || !body) {
-        return json(res, { error: 'email, subject, and body required' }, 400);
+        return json(res, { error: 'Ticket creation requires email, subject, and body', detail: 'All three fields must be provided', example: { email: 'user@example.com', subject: 'Billing Question', body: 'I need help with my account balance' } }, 400);
       }
       
       // Generate ticket ID
@@ -1039,7 +1369,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname === '/api/tickets') {
       const adminKey = req.headers['x-admin-key'] || req.headers['authorization']?.replace('Bearer ', '');
       if (adminKey !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
-        return json(res, { error: 'Unauthorized' }, 401);
+        return json(res, { error: 'Admin authorization required for ticket access', detail: 'Valid X-Admin-Key or Authorization Bearer token required', help: 'Contact system administrator for access credentials' }, 401);
       }
       
       const status = url.searchParams.get('status') || null;
@@ -1084,7 +1414,7 @@ const server = http.createServer(async (req, res) => {
       const { sender, body } = data;
       
       if (!sender || !body) {
-        return json(res, { error: 'sender and body required' }, 400);
+        return json(res, { error: 'Message requires sender and body', detail: 'Both fields needed to add a message to the ticket', example: { sender: 'user@example.com', body: 'Thank you for the help!' } }, 400);
       }
       
       const ticket = stmts.getTicket.get(ticketId);
@@ -1159,12 +1489,36 @@ const server = http.createServer(async (req, res) => {
         }))
       });
     }
+
+    // ---- Create API Key ----
+    if (method === 'POST' && pathname === '/api/create_api_key') {
+      // Generate a secure API key
+      const apiKey = `ic_${crypto.randomBytes(32).toString('hex')}`;
+      
+      return json(res, {
+        api_key: apiKey,
+        created: new Date().toISOString(),
+        note: 'Store this key securely. It will not be displayed again.'
+      });
+    }
+
+    // ---- API Keys (alias for create_api_key) ----
+    if (method === 'POST' && pathname === '/api/keys') {
+      // Generate a secure API key (same as create_api_key endpoint)
+      const apiKey = `ic_${crypto.randomBytes(32).toString('hex')}`;
+      
+      return json(res, {
+        api_key: apiKey,
+        created: new Date().toISOString(),
+        note: 'Store this key securely. It will not be displayed again.'
+      });
+    }
     
     // ---- Operator Dashboard ----
     if (method === 'GET' && pathname.startsWith('/operator/')) {
       const nodeId = pathname.split('/')[2];
       if (!nodeId) {
-        return json(res, { error: 'Node ID required' }, 400);
+        return json(res, { error: 'Node ID required for payout computation', detail: 'Specify nodeId parameter to calculate earnings', example: { nodeId: 'node-123' } }, 400);
       }
       
       res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -1177,11 +1531,31 @@ const server = http.createServer(async (req, res) => {
       return res.end(getDashboardHTML());
     }
     
-    json(res, { error: 'not found' }, 404);
+    json(res, { 
+      error: 'API endpoint not found', 
+      code: 'ROUTE_NOT_FOUND', 
+      requested: `${method} ${pathname}`,
+      available_endpoints: {
+        jobs: 'POST /jobs, GET /jobs/{id}, GET /jobs/available',
+        nodes: 'POST /nodes/register, GET /nodes',
+        files: 'POST /upload, GET /files/{filename}',
+        admin: 'GET /status, GET /health',
+        websocket: 'ws://host:port/ws?nodeId=your-id'
+      },
+      documentation: 'https://github.com/intelligence-club/ic-mesh#api-reference'
+    }, 404);
     
   } catch (e) {
-    console.error('Error:', e);
-    json(res, { error: e.message }, 500);
+    logError('HTTP request handler', e, { 
+      method, 
+      pathname, 
+      userAgent: req.headers['user-agent']?.substring(0, 50)
+    });
+    // Don't leak internal errors to clients
+    const safeMsg = e.message?.includes('constraint') || e.message?.includes('SQLITE') || e.message?.includes('database')
+      ? 'Internal server error'
+      : e.message || 'Internal server error';
+    json(res, { error: safeMsg }, 500);
   }
 });
 
@@ -1447,26 +1821,65 @@ storage.initSpaces().then(ok => {
   if (!ok) console.log('  📁 Storage: local disk (set DO_SPACES_KEY/SECRET for Spaces)');
 });
 
-// Reap stale claimed jobs every 60s (no zombies)
-const JOB_CLAIM_TTL = { ping: 30000, inference: 600000, transcribe: 900000, generate: 1200000, default: 600000 };
+// Reap stale claimed jobs every 30s (no zombies)
+// Layer 1: Hard timeout per job type
+// Layer 2: If no progress update in 120s, assume dead
+const JOB_CLAIM_TTL = { ping: 30000, inference: 300000, transcribe: 600000, 'generate-image': 600000, generate: 600000, default: 300000 };
+const PROGRESS_SILENCE_TTL = 120000; // 2 minutes without progress = dead
 setInterval(() => {
-  const cutoff = Date.now() - 600000; // conservative: 10 min default
-  const stale = stmts.getClaimedStale.all(cutoff);
-  for (const job of stale) {
+  const claimed = stmts.getClaimedStale.all(Date.now() - 60000); // check anything claimed > 60s ago
+  for (const job of claimed) {
     const ttl = JOB_CLAIM_TTL[job.type] || JOB_CLAIM_TTL.default;
-    if (Date.now() - job.claimedAt > ttl) {
-      console.log(`◉ Reaper: job ${job.jobId} (${job.type}) timed out after ${Math.round((Date.now() - job.claimedAt)/1000)}s`);
-      stmts.failJob.run(JSON.stringify({ error: `Reaped: no completion after ${Math.round(ttl/1000)}s` }), job.jobId);
+    const age = Date.now() - job.claimedAt;
+    
+    // Hard timeout
+    if (age > ttl) {
+      console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) HARD TIMEOUT after ${Math.round(age/1000)}s`);
+      db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+      continue;
+    }
+    
+    // Progress silence check — if claimed > 2 min ago and never sent progress, reclaim
+    if (age > PROGRESS_SILENCE_TTL) {
+      const hasProgress = job.progress && job.progress !== 'null';
+      if (!hasProgress) {
+        console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) NO PROGRESS for ${Math.round(age/1000)}s — reclaiming`);
+        db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+        continue;
+      }
+      
+      // Has progress — check when last updated
+      try {
+        const prog = JSON.parse(job.progress);
+        if (prog._updated && Date.now() - prog._updated > PROGRESS_SILENCE_TTL) {
+          console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) STALE PROGRESS — reclaiming`);
+          db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+        }
+      } catch {}
     }
   }
-}, 60000);
+}, 30000);
+
+// Reap stale PENDING jobs every hour (24h TTL — if no node claims it, it's dead)
+const PENDING_JOB_TTL = 24 * 60 * 60 * 1000; // 24 hours
+setInterval(() => {
+  const cutoff = Date.now() - PENDING_JOB_TTL;
+  const stalePending = db.prepare("SELECT jobId, type, createdAt FROM jobs WHERE status = 'pending' AND createdAt < ?").all(cutoff);
+  for (const job of stalePending) {
+    console.log(`◉ Reaper: pending job ${job.jobId} (${job.type}) expired after 24h unclaimed`);
+    stmts.failJob.run(JSON.stringify({ error: 'Expired: no node claimed this job within 24 hours' }), job.jobId);
+  }
+  if (stalePending.length > 0) console.log(`  🧹 Reaped ${stalePending.length} stale pending jobs`);
+}, 3600000);
 
 // Cleanup expired uploads every hour
 setInterval(async () => {
   try {
     const deleted = await storage.cleanupExpired();
     if (deleted > 0) console.log(`  🧹 Cleaned up ${deleted} expired uploads`);
-  } catch(e) {}
+  } catch(e) {
+    logError('Upload cleanup', e);
+  }
 }, 3600000);
 
 server.listen(PORT, '0.0.0.0', () => {

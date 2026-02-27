@@ -100,6 +100,9 @@ if (fs.existsSync(CONFIG_FILE)) {
         }
       }
       
+      // WebSocket toggle from config
+      if (fileConfig.useWebSocket !== undefined) config.useWebSocket = fileConfig.useWebSocket;
+      
       // Store complete config for advanced features
       config._complexConfig = fileConfig;
       console.log(`◉ Loaded complex config from ${CONFIG_FILE}`);
@@ -124,11 +127,32 @@ if (fs.existsSync(CONFIG_FILE)) {
 const MESH_SERVER = process.env.IC_MESH_SERVER || config.meshServer;
 const NODE_NAME = process.env.IC_NODE_NAME || config.nodeName || os.hostname();
 const NODE_OWNER = process.env.IC_NODE_OWNER || config.nodeOwner || os.userInfo().username;
+
+// Validate node owner - prevent "unknown" nodes from registering
+if (!NODE_OWNER || NODE_OWNER === 'unknown' || NODE_OWNER.trim() === '') {
+  console.error('❌ Node owner validation failed!');
+  console.error('   Node owner cannot be empty or "unknown"');
+  console.error('');
+  console.error('   Fix this by setting one of:');
+  console.error('   1. Environment variable: IC_NODE_OWNER=yourname');
+  console.error('   2. Config file: { "nodeOwner": "yourname" }');
+  console.error('   3. Ensure os.userInfo().username returns valid name');
+  console.error('');
+  console.error(`   Current owner value: "${NODE_OWNER}"`);
+  process.exit(1);
+}
+
 const NODE_REGION = process.env.IC_NODE_REGION || config.nodeRegion;
 const CHECKIN_INTERVAL = config.checkinInterval;
 const JOB_POLL_INTERVAL = config.jobPollInterval;
 const UPDATE_CHECK_INTERVAL = config.updateCheckInterval;
 const MAX_CONCURRENT_JOBS = config.maxConcurrentJobs || (config._complexConfig?.limits?.maxConcurrentJobs) || 3;
+
+// Auto-disable WebSocket for remote servers (proxy WS is unreliable)
+if (config.useWebSocket && MESH_SERVER && !MESH_SERVER.includes('localhost') && !MESH_SERVER.includes('127.0.0.1')) {
+  config.useWebSocket = false;
+  console.log('◉ Remote server detected — using HTTP polling (more reliable than WS proxy)');
+}
 const NODE_ID_FILE = path.join(__dirname, '.node-id');
 
 // Job timeout defaults (ms) — payload.timeout (seconds) overrides
@@ -141,6 +165,8 @@ let wsConnection = null;
 let isConnecting = false;
 let shuttingDown = false;
 let jobRunning = false;
+let pollInterval = null;
+let currentJobId = null;
 
 // ===== Node ID Persistence =====
 
@@ -204,6 +230,7 @@ function getCapabilities() {
   if (which('ollama')) caps.push('ollama');
   if (which('whisper')) caps.push('whisper');
   if (which('ffmpeg')) caps.push('ffmpeg');
+  if (which('tesseract')) caps.push('tesseract');
   if (which('nvidia-smi')) caps.push('gpu-nvidia');
 
   try {
@@ -211,7 +238,7 @@ function getCapabilities() {
       caps.push('gpu-metal');
   } catch {}
 
-  if (httpOk('http://localhost:7860/sdapi/v1/sd-models')) caps.push('stable-diffusion');
+  if (httpOk('http://localhost:7860/sdapi/v1/sd-models') || httpOk('http://localhost:7861/sdapi/v1/sd-models')) caps.push('stable-diffusion');
   if (httpOk('http://localhost:8188/system_stats')) caps.push('comfyui');
 
   // Add capabilities from enabled handlers
@@ -231,6 +258,54 @@ function getOllamaModels() {
     return execSync('ollama list 2>/dev/null', { encoding: 'utf8', timeout: 10000 })
       .split('\n').slice(1).filter(Boolean).map(l => l.split(/\s+/)[0]).filter(Boolean);
   } catch { return []; }
+}
+
+async function getSDModels() {
+  const sdUrl = process.env.IC_SD_URL || config.sdUrl;
+  if (!sdUrl) {
+    // Try default ports
+    for (const port of [7860, 7861]) {
+      try {
+        const r = await fetch(`http://localhost:${port}/sdapi/v1/sd-models`, { signal: AbortSignal.timeout(5000) });
+        const models = await r.json();
+        return models.map(m => m.model_name || m.title).filter(Boolean);
+      } catch {}
+    }
+    return [];
+  }
+  try {
+    const r = await fetch(`${sdUrl}/sdapi/v1/sd-models`, { signal: AbortSignal.timeout(5000) });
+    const models = await r.json();
+    return models.map(m => m.model_name || m.title).filter(Boolean);
+  } catch { return []; }
+}
+
+function getWhisperModels() {
+  // Check for whisper model files in common locations
+  const models = [];
+  const whisperPaths = [
+    path.join(os.homedir(), '.cache', 'whisper'),
+    path.join(os.homedir(), 'Library', 'Caches', 'whisper'),
+    '/usr/local/share/whisper/models'
+  ];
+  for (const p of whisperPaths) {
+    try {
+      const files = fs.readdirSync(p).filter(f => f.endsWith('.bin') || f.endsWith('.pt'));
+      for (const f of files) {
+        const match = f.match(/(tiny|base|small|medium|large(?:-v[23])?)/);
+        if (match) models.push(match[1]);
+      }
+    } catch {}
+  }
+  // Also check if whisper CLI reports models
+  if (models.length === 0) {
+    try {
+      const out = execSync('whisper --help 2>&1 || true', { encoding: 'utf8', timeout: 5000 });
+      const match = out.match(/model.*?{([^}]+)}/);
+      if (match) models.push(...match[1].split(',').map(s => s.trim()));
+    } catch {}
+  }
+  return [...new Set(models)];
 }
 
 // ===== Network Communication =====
@@ -368,19 +443,91 @@ async function runCustomHandler(job) {
   env.HANDLER_TEMP_DIR = tmpDir;
   
   try {
-    // Execute handler command with timeout
-    const output = await execWithTimeout(handler.command, timeoutMs);
+    // Download input files if URL provided
+    const inputFiles = [];
+    if (job.payload?.url) {
+      // Validate URL — must be http(s), no path traversal, no shell injection
+      let parsedUrl;
+      try { parsedUrl = new URL(job.payload.url); } catch { throw new Error('Invalid URL in payload'); }
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('URL must be http or https');
+      if (parsedUrl.pathname.includes('..')) throw new Error('Path traversal detected in URL');
+      const safeUrl = parsedUrl.href.replace(/[;&|`$\\]/g, ''); // strip shell metacharacters
+      
+      const ext = path.extname(parsedUrl.pathname) || '.bin';
+      const inputFile = path.join(tmpDir, `input${ext}`);
+      await execWithTimeout(`curl -sL --max-filesize 500000000 -o "${inputFile}" "${safeUrl}"`, Math.min(timeoutMs, 120_000));
+      inputFiles.push(inputFile);
+    }
+    
+    // Prepare stdin data for handler
+    const stdinData = JSON.stringify({
+      ...job,
+      inputFiles,
+      outputDir: tmpDir
+    });
+    
+    // Execute handler command with stdin and timeout
+    const output = await new Promise((resolve, reject) => {
+      const proc = require('child_process').spawn('bash', ['-c', handler.command], {
+        env, cwd: path.join(__dirname),
+        timeout: timeoutMs
+      });
+      let stdout = '', stderr = '';
+      proc.stdout.on('data', d => stdout += d);
+      proc.stderr.on('data', d => { stderr += d; process.stderr.write(d); });
+      proc.on('close', code => {
+        if (code === 0) resolve(stdout);
+        else reject(new Error(`Exit ${code}: ${stderr.slice(-500)}`));
+      });
+      proc.on('error', reject);
+      proc.stdin.write(stdinData);
+      proc.stdin.end();
+    });
     
     // Try to parse output as JSON, fall back to plain text
+    let result;
     try {
-      return JSON.parse(output.trim());
+      result = JSON.parse(output.trim());
     } catch {
-      return { 
-        success: true, 
-        output: output.trim(),
-        handler: job.type
-      };
+      result = { success: true, output: output.trim(), handler: job.type };
     }
+
+    // Upload output files back to mesh server so consumers can download them
+    if (result.outputFiles && Array.isArray(result.outputFiles)) {
+      const uploadedUrls = [];
+      for (const filePath of result.outputFiles) {
+        if (fs.existsSync(filePath)) {
+          try {
+            const fileName = path.basename(filePath);
+            const fileData = fs.readFileSync(filePath);
+            const boundary = '----ICMeshUpload' + Date.now();
+            const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+            const footer = `\r\n--${boundary}--\r\n`;
+            const body = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
+            
+            const uploadRes = await fetch(`${MESH_SERVER}/upload`, {
+              method: 'POST',
+              headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+              body
+            });
+            const uploadData = await uploadRes.json();
+            if (uploadData.ok && uploadData.url) {
+              uploadedUrls.push(uploadData.url);
+              console.log(`  ↑ Uploaded output: ${fileName} → ${uploadData.url}`);
+            }
+          } catch (e) {
+            console.log(`  ⚠ Failed to upload ${filePath}: ${e.message}`);
+          }
+        }
+      }
+      if (uploadedUrls.length > 0) {
+        result.output_url = uploadedUrls[0];
+        result.outputUrls = uploadedUrls;
+        delete result.outputFiles; // Remove local paths from result
+      }
+    }
+
+    return result;
   } catch (error) {
     throw new Error(`Handler ${job.type} failed: ${error.message}`);
   } finally {
@@ -401,27 +548,147 @@ async function executeJob(job) {
   switch (job.type) {
     case 'inference': return await runInference(job.payload, getJobTimeout(job));
     case 'transcribe': return await runTranscribe(job.payload, getJobTimeout(job));
-    case 'generate': return await runGenerate(job.payload, getJobTimeout(job));
+    case 'ffmpeg': return await runFFmpegJob(job, getJobTimeout(job));
+    case 'generate': case 'generate-image': return await runGenerate(job.payload, getJobTimeout(job));
     case 'ping': return { pong: true, node: NODE_NAME, time: Date.now(), version: getLocalVersion() };
     default: throw new Error(`Unknown job type: ${job.type}`);
   }
 }
 
+async function runFFmpegJob(job, timeoutMs) {
+  const payload = job.payload || {};
+  const FFMPEG_SERVICE = 'http://localhost:7880';
+  
+  // Check if ffmpeg-service is available (preferred — no shell execution)
+  let useService = false;
+  try {
+    const health = await fetch(`${FFMPEG_SERVICE}/`, { signal: AbortSignal.timeout(2000) });
+    useService = health.ok;
+  } catch {}
+  
+  if (useService) {
+    console.log('  🎬 Using ffmpeg-service (safe API)');
+    
+    // Map job payload to service operation
+    const operation = payload.operation || 'compress';
+    const validOps = ['compress', 'convert', 'extract-audio', 'trim', 'thumbnail', 'info'];
+    if (!validOps.includes(operation)) throw new Error(`Invalid ffmpeg operation: ${operation}. Valid: ${validOps.join(', ')}`);
+    
+    const servicePayload = { url: payload.url, ...payload };
+    delete servicePayload.email;
+    delete servicePayload.job_token;
+    delete servicePayload.price_ints;
+    
+    const resp = await fetch(`${FFMPEG_SERVICE}/api/${operation}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(servicePayload),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    
+    const result = await resp.json();
+    if (!result.success && result.error) throw new Error(result.error);
+    
+    // Upload output file if present
+    if (result.outputFile && fs.existsSync(result.outputFile)) {
+      const fileName = path.basename(result.outputFile);
+      const fileData = fs.readFileSync(result.outputFile);
+      const boundary = '----ICMeshUpload' + Date.now();
+      const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+      const footer = `\r\n--${boundary}--\r\n`;
+      const body = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
+      
+      const uploadRes = await fetch(`${MESH_SERVER}/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        body
+      });
+      const uploadData = await uploadRes.json();
+      if (uploadData.ok && uploadData.url) {
+        result.output_url = uploadData.url;
+        console.log(`  ↑ Uploaded: ${fileName} → ${uploadData.url}`);
+      }
+      delete result.outputFile;
+    }
+    
+    return result;
+  }
+  
+  // Fallback to custom handler (shell script — less safe but works without service)
+  console.log('  ⚠ ffmpeg-service not running, falling back to shell handler');
+  return await runCustomHandler(job, timeoutMs);
+}
+
 async function runInference(payload, timeoutMs) {
   const model = payload.model || 'llama3.1:8b';
   const prompt = payload.prompt || '';
+  
+  // Validate inputs
+  if (!prompt.trim()) throw new Error('Empty prompt — please provide a question or instruction');
+  
+  // Check if model exists on this node
+  const ollamaModels = getOllamaModels();
+  if (ollamaModels.length > 0 && !ollamaModels.some(m => m === model || m.startsWith(model.split(':')[0]))) {
+    throw new Error(`Model "${model}" not found. Available: ${ollamaModels.slice(0, 5).join(', ')}${ollamaModels.length > 5 ? '...' : ''}`);
+  }
+  
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // Use streaming to avoid timeout on slow models — each chunk resets our activity timer
     const resp = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, prompt, stream: false }),
+      body: JSON.stringify({ model, prompt, stream: true }),
       signal: controller.signal
     });
-    const data = await resp.json();
-    return { response: data.response, model, tokens: data.eval_count || 0 };
+    
+    if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`);
+    
+    let fullResponse = '';
+    let tokens = 0;
+    let lastProgress = Date.now();
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const chunk = JSON.parse(line);
+          if (chunk.response) fullResponse += chunk.response;
+          if (chunk.eval_count) tokens = chunk.eval_count;
+          
+          // Report progress every 3s
+          if (Date.now() - lastProgress > 3000 && currentJobId) {
+            const wordCount = fullResponse.split(/\s+/).filter(Boolean).length;
+            try {
+              await fetch(`${MESH_SERVER}/jobs/${currentJobId}/progress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pct: chunk.done ? 100 : 50, step: wordCount, steps: 0, eta: null, nodeId })
+              });
+            } catch {}
+            lastProgress = Date.now();
+          }
+          
+          // Reset timeout on each chunk — model is alive
+          clearTimeout(timer);
+          timer = setTimeout(() => controller.abort(), 120000);
+        } catch {}
+      }
+    }
+    
+    return { response: fullResponse, model, tokens };
   } catch (e) {
     throw new Error(e.name === 'AbortError' ? `Inference timeout (${Math.round(timeoutMs/1000)}s)` : `Ollama failed: ${e.message}`);
   } finally { clearTimeout(timer); }
@@ -452,11 +719,36 @@ async function runGenerate(payload, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  // Poll SD progress and report to mesh server
+  const progressInterval = setInterval(async () => {
+    try {
+      const prog = await fetch(`${SD_URL}/sdapi/v1/progress`, { signal: AbortSignal.timeout(3000) });
+      const p = await prog.json();
+      if (p.progress > 0 && p.progress < 1) {
+        const pct = Math.round(p.progress * 100);
+        const step = p.state?.sampling_step || 0;
+        const steps = p.state?.sampling_steps || params.steps;
+        const eta = p.eta_relative ? Math.round(p.eta_relative) : null;
+        const progressData = { pct, step, steps, eta, stage: 'generating' };
+        console.log(`  ◉ Progress: ${pct}% (step ${step}/${steps}${eta ? ', ~' + eta + 's left' : ''})`);
+        // Report to mesh server
+        try {
+          await fetch(`${MESH_SERVER}/jobs/${currentJobId}/progress`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nodeId, progress: progressData }),
+            signal: AbortSignal.timeout(3000)
+          });
+        } catch {}
+      }
+    } catch {}
+  }, 2000);
+
   try {
     const resp = await fetch(`${SD_URL}/sdapi/v1/txt2img`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params), signal: controller.signal
     });
+    clearInterval(progressInterval);
     if (!resp.ok) throw new Error(`SD API ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
     const data = await resp.json();
     if (!data.images?.length) throw new Error('No images returned');
@@ -480,7 +772,7 @@ async function runGenerate(payload, timeoutMs) {
     return { image_base64: data.images[0], width: params.width, height: params.height, prompt: params.prompt, steps: params.steps, seed: data.parameters?.seed || params.seed, sizeBytes: imgBuffer.length };
   } catch (e) {
     throw e.name === 'AbortError' ? new Error(`SD timeout (${Math.round(timeoutMs/1000)}s)`) : e;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); clearInterval(progressInterval); }
 }
 
 async function runTranscribe(payload, timeoutMs) {
@@ -501,7 +793,29 @@ async function runTranscribe(payload, timeoutMs) {
     const model = payload.model || 'base';
     const language = payload.language || 'en';
     console.log(`  ◉ Transcribing with whisper (model: ${model})...`);
-    await execWithTimeout(`whisper "${tmpFile}" --model ${model} --language ${language} --output_dir "${outDir}" --output_format txt`, timeoutMs);
+    
+    // Report progress during transcription
+    const fileSizeMB = fs.statSync(tmpFile).size / (1024 * 1024);
+    const estimatedSec = Math.max(10, fileSizeMB * 15); // rough: ~15s per MB
+    const startTime = Date.now();
+    const transcribeProgress = setInterval(async () => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const pct = Math.min(90, Math.round((elapsed / estimatedSec) * 100));
+      const stage = elapsed < 5 ? 'loading model' : 'transcribing';
+      try {
+        await fetch(`${MESH_SERVER}/jobs/${currentJobId}/progress`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodeId, progress: { pct, stage, elapsed: Math.round(elapsed), estimatedTotal: Math.round(estimatedSec) } }),
+          signal: AbortSignal.timeout(3000)
+        });
+      } catch {}
+    }, 2000);
+    
+    try {
+      await execWithTimeout(`whisper "${tmpFile}" --model ${model} --language ${language} --output_dir "${outDir}" --output_format txt`, timeoutMs);
+    } finally {
+      clearInterval(transcribeProgress);
+    }
 
     const txtFiles = fs.readdirSync(outDir).filter(f => f.endsWith('.txt'));
     const transcript = txtFiles.length ? fs.readFileSync(path.join(outDir, txtFiles[0]), 'utf8').trim() : '(no output)';
@@ -513,10 +827,21 @@ async function runTranscribe(payload, timeoutMs) {
 }
 
 // ===== WebSocket Connection =====
+let wsFailCount = 0;
+const WS_MAX_FAILURES = 3;
 
 function connectWebSocket() {
   if (isConnecting || (wsConnection && wsConnection.readyState === WebSocket.OPEN)) return;
   
+  // After repeated failures, give up on WS and stick with polling
+  if (wsFailCount >= WS_MAX_FAILURES) {
+    if (!pollInterval) {
+      console.log(`◉ WebSocket failed ${wsFailCount} times — switching permanently to HTTP polling`);
+      pollInterval = setInterval(pollJobs, JOB_POLL_INTERVAL);
+    }
+    return;
+  }
+
   isConnecting = true;
   const wsUrl = MESH_SERVER.replace('http://', 'ws://').replace('https://', 'wss://') + `/ws?nodeId=${nodeId}`;
   
@@ -526,6 +851,9 @@ function connectWebSocket() {
   wsConnection.on('open', () => {
     isConnecting = false;
     console.log(`◉ WebSocket connected — job polling disabled`);
+    wsFailCount = 0; // Reset on successful connection
+    // Stop HTTP polling fallback if running
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   });
   
   wsConnection.on('message', (data) => {
@@ -540,9 +868,16 @@ function connectWebSocket() {
   wsConnection.on('close', (code, reason) => {
     isConnecting = false;
     console.log(`◉ WebSocket disconnected: ${code} ${reason}`);
-    console.log(`  Falling back to HTTP polling...`);
-    // Reconnect after 5 seconds
-    setTimeout(connectWebSocket, 5000);
+    wsFailCount++;
+    console.log(`  Falling back to HTTP polling... (failure ${wsFailCount}/${WS_MAX_FAILURES})`);
+    // Start HTTP polling as fallback while WS is down
+    if (!pollInterval) {
+      pollInterval = setInterval(pollJobs, JOB_POLL_INTERVAL);
+    }
+    // Reconnect after 5 seconds (unless max failures reached)
+    if (wsFailCount < WS_MAX_FAILURES) {
+      setTimeout(connectWebSocket, 5000);
+    }
   });
   
   wsConnection.on('error', (err) => {
@@ -683,7 +1018,14 @@ async function checkin() {
   if (shuttingDown) return;
   const sysInfo = getSystemInfo();
   const capabilities = getCapabilities();
-  const models = getOllamaModels();
+  const ollamaModels = getOllamaModels();
+  const sdModels = await getSDModels();
+  const whisperModels = getWhisperModels();
+  const models = {
+    ollama: ollamaModels,
+    ...(sdModels.length > 0 ? { 'stable-diffusion': sdModels } : {}),
+    ...(whisperModels.length > 0 ? { whisper: whisperModels } : {})
+  };
   const resources = checkResourceLimits();
   const scheduleActive = isScheduleActive();
 
@@ -718,12 +1060,34 @@ async function checkin() {
       console.log(`◉ Registered as node: ${nodeId}`);
       console.log(`  Name: ${NODE_NAME} | Owner: ${NODE_OWNER} | Region: ${NODE_REGION}`);
       console.log(`  Caps: ${capabilities.join(', ') || 'none'}`);
-      console.log(`  Models: ${models.join(', ') || 'none'}`);
+      const modelSummary = Object.entries(models).filter(([k,v]) => v.length > 0).map(([k,v]) => `${k}: ${v.join(', ')}`).join(' | ');
+      console.log(`  Models: ${modelSummary || 'none'}`);
       console.log(`  RAM: ${sysInfo.ramMB}MB (${sysInfo.ramFreeMB}MB free) | CPU: ${sysInfo.cpuCores}c ${sysInfo.cpuIdle}% idle`);
       console.log(`  Status: ${scheduleActive ? 'Active' : 'Scheduled Off'} | CPU ${resources.cpuUsage}%/${config.limits.maxCpuPercent}% | RAM ${resources.ramUsage}%/${config.limits.maxRamPercent}%`);
       if (Object.keys(config.handlers || {}).length > 0) {
         const enabledHandlers = Object.keys(config.handlers).filter(h => config.handlers[h].enabled !== false);
         console.log(`  Handlers: ${enabledHandlers.join(', ') || 'none enabled'}`);
+      }
+      
+      // First-job guarantee for new nodes - request a ping test job to verify connectivity
+      if (capabilities.includes('ping')) {
+        setTimeout(async () => {
+          console.log('  ◉ Requesting initial capability test job...');
+          try {
+            await meshFetch('/jobs', {
+              method: 'POST',
+              body: JSON.stringify({
+                type: 'ping',
+                payload: { message: `First job test for ${NODE_NAME}` },
+                clientIp: '127.0.0.1',
+                priority: 'high'
+              })
+            });
+            console.log('  ✅ Initial test job submitted');
+          } catch (err) {
+            console.log(`  ⚠️  Could not submit test job: ${err.message}`);
+          }
+        }, 2000); // Wait 2s for full registration to complete
       }
     }
   }
@@ -745,6 +1109,18 @@ async function pollJobs() {
 
   console.log(`  ✓ Claimed (timeout: ${Math.round(getJobTimeout(job)/1000)}s)`);
   jobRunning = true;
+  currentJobId = job.jobId;
+
+  // Mandatory heartbeat — tell server we're alive every 30s even if no real progress
+  const jobHeartbeat = setInterval(async () => {
+    try {
+      await fetch(`${MESH_SERVER}/jobs/${job.jobId}/progress`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId, progress: { stage: 'working', heartbeat: true, pct: 0 } }),
+        signal: AbortSignal.timeout(5000)
+      });
+    } catch {}
+  }, 30000);
 
   try {
     const result = await executeJobSafe(job);
@@ -758,7 +1134,9 @@ async function pollJobs() {
       method: 'POST', body: JSON.stringify({ nodeId, error: e.message })
     });
   } finally {
+    clearInterval(jobHeartbeat);
     jobRunning = false;
+    currentJobId = null;
   }
 }
 

@@ -1,0 +1,213 @@
+{
+  "timestamp": "2026-02-27T04:12:41.475Z",
+  "sources": {
+    "database": {
+      "pendingJobs": 0,
+      "totalNodes": 0,
+      "recentJobs": [],
+      "completedJobs": 0,
+      "totalJobs": 0,
+      "activeNodes": 0
+    },
+    "api": {
+      "status": {
+        "network": "Intelligence Club Mesh",
+        "version": "0.3.0",
+        "status": "no nodes",
+        "nodes": {
+          "active": 0,
+          "total": 5
+        },
+        "compute": {
+          "totalCores": 0,
+          "totalRAM_GB": 0,
+          "capabilities": [],
+          "models": [],
+          "modelsByService": {}
+        },
+        "jobs": {
+          "total": 188,
+          "completed": 65,
+          "pending": 12
+        },
+        "economics": {
+          "totalComputeMinutes": 19.96,
+          "treasuryMinutes": 3.99
+        },
+        "websocket": {
+          "connected": 0
+        },
+        "uptime": 111133.566548003
+      },
+      "totalNodes": 0,
+      "activeNodes": 0,
+      "availableJobs": 0
+    },
+    "analysisTools": {
+      "node-revival-system": {
+        "lastModified": "2026-02-27T04:09:49.625Z",
+        "ageMinutes": 3,
+        "data": {
+          "attempts": [
+            {
+              "timestamp": "2026-02-27T03:57:22.379Z",
+              "messagesGenerated": 0,
+              "networkStatus": {
+                "activeNodes": 0,
+                "totalNodes": 0,
+                "pendingJobs": 0,
+                "serviceAvailability": "limited"
+              }
+            },
+            {
+              "timestamp": "2026-02-27T04:09:49.625Z",
+              "messagesGenerated": 0,
+              "networkStatus": {
+                "activeNodes": 0,
+                "totalNodes": 0,
+                "pendingJobs": 0,
+                "serviceAvailability": "limited"
+              }
+            }
+          ],
+          "lastRun": "2026-02-27T04:09:49.625Z",
+          "stats": {
+            "totalAttempts": 0,
+            "successfulRevivals": 0,
+            "failedAttempts": 0
+          }
+        },
+        "fresh": true
+      },
+      "node-retention-investigator": {
+        "lastModified": "2026-02-27T04:10:30.937Z",
+        "ageMinutes": 2,
+        "data": {
+          "timestamp": "2026-02-27T04:10:30.938Z",
+          "analysis": {
+            "totalNodes": 0,
+            "currentState": {
+              "total": 0,
+              "active": 0,
+              "recent": 0,
+              "today": 0,
+              "week": 0,
+              "dormant": 0
+            },
+            "criticalAlert": "ZERO_NODES_DETECTED",
+            "retentionRates": {
+              "immediate": 0,
+              "daily": 0,
+              "weekly": 0
+            },
+            "nodePerformance": [],
+            "jobHistory": {
+              "total": 0,
+              "completed": 0,
+              "failed": 0,
+              "pending": 0
+            },
+            "networkActivity": "UNUSED",
+            "disconnectionPatterns": {
+              "simultaneousDisconnects": 0,
+              "gradualChurn": 0,
+              "performanceRelated": 0,
+              "timeBasedPatterns": {}
+            },
+            "capabilityRetention": {},
+            "networkCapability": "ZERO",
+            "insights": [
+              {
+                "type": "CRITICAL",
+                "issue": "Zero active nodes",
+                "impact": "Network cannot process any jobs",
+                "priority": 1
+              },
+              {
+                "type": "CRITICAL",
+                "issue": "Very low daily retention (<25%)",
+                "impact": "Unsustainable network operation",
+                "priority": 1
+              },
+              {
+                "type": "INFO",
+                "issue": "Limited capability diversity",
+                "impact": "Reduced network utility and earning potential",
+                "priority": 3
+              }
+            ],
+            "recommendations": [
+              {
+                "action": "Emergency node recruitment",
+                "steps": [
+                  "Contact previous operators via outreach campaign",
+                  "Offer incentives for immediate reconnection",
+                  "Debug infrastructure issues preventing connections",
+                  "Deploy monitoring to detect future mass disconnections"
+                ],
+                "priority": 1,
+                "timeframe": "IMMEDIATE"
+              },
+              {
+                "action": "Node retention program",
+                "steps": [
+                  "Create operator dashboard with earnings tracking",
+                  "Implement loyalty rewards for consistent uptime",
+                  "Add automated health checks and alerts",
+                  "Build community features for operator engagement"
+                ],
+                "priority": 3,
+                "timeframe": "1 month"
+              }
+            ]
+          },
+          "summary": {
+            "totalNodes": 0,
+            "activeNodes": 0,
+            "retentionRate": 0,
+            "networkHealth": "UNUSED",
+            "criticalIssues": 2,
+            "recommendations": 2
+          }
+        },
+        "fresh": true
+      }
+    }
+  },
+  "discrepancies": [
+    {
+      "type": "api_job_count_inconsistency",
+      "severity": "high",
+      "description": "Available jobs API shows 0 jobs but status endpoint shows 12 pending jobs",
+      "sources": {
+        "availableJobs": 0,
+        "statusPending": 12
+      }
+    },
+    {
+      "type": "total_job_count_mismatch",
+      "severity": "medium",
+      "description": "Database shows 0 total jobs but status endpoint shows 188 total jobs",
+      "sources": {
+        "database": 0,
+        "status": 188
+      }
+    },
+    {
+      "type": "total_node_count_mismatch",
+      "severity": "medium",
+      "description": "Database shows 0 total nodes but status endpoint shows 5 total nodes",
+      "sources": {
+        "database": 0,
+        "status": 5
+      }
+    }
+  ],
+  "summary": {
+    "discrepanciesFound": 3,
+    "highSeverityIssues": 1,
+    "mediumSeverityIssues": 2,
+    "lowSeverityIssues": 0,
+    "overallConsistency": "poor"
+  }
+}

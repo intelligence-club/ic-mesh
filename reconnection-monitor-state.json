@@ -1,0 +1,50 @@
+{
+  "lastChecked": 1772191252138,
+  "nodePatterns": {
+    "unnamed": {
+      "nodeId": "5ef95d698bdfa57a",
+      "status": "offline",
+      "minutesOffline": 17,
+      "jobsCompleted": 134,
+      "capabilities": [
+        "transcription"
+      ],
+      "lastPattern": "first-check"
+    },
+    "miniclaw": {
+      "nodeId": "9b6a3b5841dc2890",
+      "status": "offline",
+      "minutesOffline": 997,
+      "jobsCompleted": 11,
+      "capabilities": [
+        "whisper",
+        "ffmpeg",
+        "gpu-metal"
+      ],
+      "criticalCapabilities": [
+        "whisper"
+      ]
+    },
+    "frigg": {
+      "nodeId": "fcecb481aa501e7a",
+      "status": "offline",
+      "minutesOffline": 12000,
+      "jobsCompleted": 43,
+      "capabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "criticalCapabilities": [
+        "whisper",
+        "tesseract"
+      ]
+    }
+  },
+  "reconnectionAlerts": [],
+  "processedJobs": 0
+}

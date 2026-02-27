@@ -1,0 +1,107 @@
+{
+  "_comment": "Development configuration for IC Mesh node",
+  "_usage": "cp configs/development.example.json node-config.json",
+  
+  "node": {
+    "name": "dev-workstation",
+    "owner": "developer-name",
+    "region": "local",
+    "description": "Development testing node"
+  },
+  
+  "server": {
+    "url": "http://localhost:8333",
+    "reconnectInterval": 5000,
+    "heartbeatInterval": 15000
+  },
+  
+  "logging": {
+    "level": "debug",
+    "enableVerbose": true,
+    "logToFile": true,
+    "logFile": "logs/mesh-client-dev.log"
+  },
+  
+  "handlers": {
+    "transcribe": {
+      "command": "bash handlers/transcribe.sh",
+      "description": "Audio transcription for testing",
+      "enabled": true,
+      "accepts": { 
+        "mimeTypes": ["audio/*", "video/*"], 
+        "maxInputSizeMB": 25
+      },
+      "resources": { 
+        "timeout": 300, 
+        "maxConcurrent": 1, 
+        "cpuWeight": "low"
+      },
+      "env": { 
+        "WHISPER_MODEL": "tiny",
+        "WHISPER_DEVICE": "cpu"
+      },
+      "development": {
+        "enableProfiling": true,
+        "mockMode": false,
+        "testDataPath": "test/fixtures/audio"
+      }
+    },
+    
+    "inference": {
+      "command": "node handlers/inference.js",
+      "description": "LLM inference for development",
+      "enabled": true,
+      "resources": { 
+        "timeout": 60, 
+        "maxConcurrent": 1
+      },
+      "env": { 
+        "OLLAMA_URL": "http://localhost:11434",
+        "DEFAULT_MODEL": "llama2:7b"
+      },
+      "development": {
+        "mockResponses": false,
+        "enableCaching": true,
+        "cacheDir": "dev-cache"
+      }
+    }
+  },
+  
+  "limits": {
+    "maxCpuPercent": 60,
+    "maxRamPercent": 50,
+    "maxConcurrentJobs": 2,
+    "maxFileSizeMB": 25,
+    "developmentMode": true
+  },
+  
+  "development": {
+    "enableHotReload": true,
+    "mockNetwork": false,
+    "testMode": false,
+    "enableMetrics": true,
+    "metricsPort": 9090,
+    "allowInsecureConnections": true,
+    "skipTLSVerification": true
+  },
+  
+  "testing": {
+    "autoTest": true,
+    "testInterval": 300000,
+    "testHandlers": ["transcribe", "inference"],
+    "testDataDir": "test/data"
+  },
+  
+  "debugging": {
+    "enableDebugServer": true,
+    "debugPort": 9229,
+    "enableProfiling": true,
+    "memoryProfiling": true,
+    "cpuProfiling": false
+  },
+  
+  "pricing": {
+    "multiplier": 0.5,
+    "developmentDiscount": true
+  }
+}

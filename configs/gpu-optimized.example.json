@@ -1,0 +1,274 @@
+{
+  "_comment": "GPU-optimized configuration for high-performance compute nodes",
+  "_usage": "cp configs/gpu-optimized.example.json node-config.json",
+  "_requirements": "NVIDIA GPU with CUDA support, >= 8GB VRAM recommended",
+  
+  "node": {
+    "name": "gpu-compute-node",
+    "owner": "your-name", 
+    "region": "gpu-cluster",
+    "description": "High-performance GPU compute node",
+    "tags": ["gpu", "cuda", "high-performance"],
+    "capabilities": ["gpu", "cuda", "ml-inference", "image-generation", "video-processing"]
+  },
+  
+  "server": {
+    "url": "https://moilol.com:8333",
+    "reconnectInterval": 15000,
+    "heartbeatInterval": 30000
+  },
+  
+  "hardware": {
+    "gpu": {
+      "enabled": true,
+      "devices": ["cuda:0"],
+      "memoryReservationMB": 1024,
+      "enableMemoryProfiling": true,
+      "thermalThrottling": {
+        "enabled": true,
+        "maxTemperature": 83,
+        "cooldownTime": 30000
+      }
+    },
+    "cpu": {
+      "enableAffinityMask": true,
+      "reservedCores": 2,
+      "enableTurboBoost": true
+    },
+    "memory": {
+      "enableHugePages": true,
+      "swappiness": 10
+    }
+  },
+  
+  "handlers": {
+    "inference": {
+      "command": "python3 handlers/gpu-inference.py",
+      "description": "GPU-accelerated LLM inference",
+      "enabled": true,
+      "priority": "high",
+      "accepts": {
+        "maxInputTokens": 8192,
+        "supportedModels": ["llama-70b", "mixtral-8x7b", "codellama-34b"]
+      },
+      "resources": {
+        "timeout": 600,
+        "maxConcurrent": 2,
+        "requiresGPU": true,
+        "gpuMemoryMB": 6144,
+        "cpuCores": 4,
+        "memoryMB": 8192
+      },
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "0",
+        "PYTORCH_CUDA_ALLOC_CONF": "max_split_size_mb:512",
+        "TOKENIZERS_PARALLELISM": "false",
+        "OMP_NUM_THREADS": "4"
+      },
+      "optimization": {
+        "enableTensorCore": true,
+        "enableMixedPrecision": true,
+        "enableKVCache": true,
+        "batchSize": 4
+      }
+    },
+    
+    "generate-image": {
+      "command": "python3 handlers/stable-diffusion-xl.py",
+      "description": "SDXL image generation with optimizations",
+      "enabled": true,
+      "priority": "high",
+      "accepts": {
+        "maxPromptLength": 512,
+        "supportedSizes": ["512x512", "768x768", "1024x1024", "1024x768"]
+      },
+      "resources": {
+        "timeout": 300,
+        "maxConcurrent": 1,
+        "requiresGPU": true,
+        "gpuMemoryMB": 8192,
+        "memoryMB": 4096
+      },
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "0",
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+        "DIFFUSERS_CACHE": "/var/cache/diffusers"
+      },
+      "optimization": {
+        "enableXFormers": true,
+        "enableTorchCompile": true,
+        "enableSageAttention": true,
+        "enableVAESlicing": true,
+        "enableCPUOffload": false
+      }
+    },
+    
+    "transcribe": {
+      "command": "python3 handlers/whisper-gpu.py",
+      "description": "GPU-accelerated Whisper transcription",
+      "enabled": true,
+      "accepts": {
+        "mimeTypes": ["audio/*", "video/*"],
+        "maxInputSizeMB": 200,
+        "maxDurationMinutes": 60
+      },
+      "resources": {
+        "timeout": 900,
+        "maxConcurrent": 2,
+        "requiresGPU": true,
+        "gpuMemoryMB": 4096,
+        "memoryMB": 2048
+      },
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "0",
+        "WHISPER_MODEL": "large-v3",
+        "WHISPER_DEVICE": "cuda",
+        "WHISPER_COMPUTE_TYPE": "float16"
+      },
+      "optimization": {
+        "enableBatching": true,
+        "batchSize": 8,
+        "enableVAD": true,
+        "enableHallucination": false
+      }
+    },
+    
+    "video-process": {
+      "command": "python3 handlers/video-gpu.py",
+      "description": "GPU-accelerated video processing",
+      "enabled": true,
+      "accepts": {
+        "mimeTypes": ["video/*"],
+        "maxInputSizeMB": 1000,
+        "supportedCodecs": ["h264", "h265", "av1"]
+      },
+      "resources": {
+        "timeout": 3600,
+        "maxConcurrent": 1,
+        "requiresGPU": true,
+        "gpuMemoryMB": 4096,
+        "memoryMB": 4096,
+        "cpuCores": 6
+      },
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "0",
+        "FFMPEG_HWACCEL": "cuda",
+        "FFMPEG_PRESET": "p4"
+      },
+      "optimization": {
+        "enableHardwareDecoding": true,
+        "enableHardwareEncoding": true,
+        "enableNVENC": true,
+        "enableNVDEC": true
+      }
+    },
+    
+    "upscale": {
+      "command": "python3 handlers/real-esrgan.py", 
+      "description": "AI-powered image upscaling",
+      "enabled": true,
+      "accepts": {
+        "mimeTypes": ["image/*"],
+        "maxInputSizeMB": 50,
+        "maxResolution": "4096x4096"
+      },
+      "resources": {
+        "timeout": 600,
+        "maxConcurrent": 1,
+        "requiresGPU": true,
+        "gpuMemoryMB": 6144,
+        "memoryMB": 2048
+      },
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "0",
+        "REALESRGAN_MODEL": "RealESRGAN_x4plus"
+      },
+      "optimization": {
+        "enableTiling": true,
+        "tileSize": 512,
+        "tilePadding": 32
+      }
+    }
+  },
+  
+  "limits": {
+    "maxCpuPercent": 90,
+    "maxRamPercent": 85,
+    "maxGpuPercent": 95,
+    "maxGpuMemoryPercent": 90,
+    "maxConcurrentJobs": 4,
+    "maxFileSizeMB": 1000,
+    "thermalLimit": 85
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "gpuMonitoring": {
+      "enabled": true,
+      "sampleInterval": 5000,
+      "trackUtilization": true,
+      "trackMemory": true,
+      "trackTemperature": true,
+      "trackPowerDraw": true
+    },
+    "alerting": {
+      "enabled": true,
+      "gpuTemperatureThreshold": 80,
+      "gpuMemoryThreshold": 90,
+      "gpuUtilizationThreshold": 95
+    }
+  },
+  
+  "optimization": {
+    "enableGPUPersistenceMode": true,
+    "enableGPUBoostClock": true,
+    "enableP2P": true,
+    "enableUnifiedMemory": false,
+    "enableCachingAllocator": true,
+    "memoryPooling": {
+      "enabled": true,
+      "initialSizeMB": 2048,
+      "maxSizeMB": 8192
+    }
+  },
+  
+  "power": {
+    "managementEnabled": true,
+    "maxPowerLimitWatts": 300,
+    "enableDynamicVoltage": true,
+    "idlePolicy": "adaptive",
+    "sleepDelaySeconds": 60
+  },
+  
+  "cooling": {
+    "fanCurveEnabled": true,
+    "targetTemperature": 75,
+    "maxFanSpeed": 100,
+    "acousticLimit": 50
+  },
+  
+  "scheduling": {
+    "prioritizeGPUJobs": true,
+    "enablePreemption": true,
+    "enableJobQueuing": true,
+    "maxQueueSize": 10,
+    "enableWarmup": true,
+    "warmupModels": ["llama-7b", "stable-diffusion-v1-5"]
+  },
+  
+  "pricing": {
+    "multiplier": 2.5,
+    "gpuPremium": 3.0,
+    "powerEfficiencyBonus": 1.1,
+    "peakHourMultiplier": 1.2,
+    "bulkDiscountThreshold": 50
+  },
+  
+  "maintenance": {
+    "autoCleanupEnabled": true,
+    "modelCacheMaxSizeGB": 100,
+    "enableModelRotation": true,
+    "thermalThrottleRecovery": true,
+    "memoryDefragmentation": true
+  }
+}

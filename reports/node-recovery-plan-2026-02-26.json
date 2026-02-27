@@ -1,0 +1,135 @@
+{
+  "timestamp": "2026-02-26T02:13:01.535Z",
+  "crisisLevel": "TOTAL_OUTAGE",
+  "currentState": {
+    "totalNodes": 0,
+    "activeNodes": 0,
+    "totalJobs": 0,
+    "lastJobTime": null,
+    "networkCapacity": 0
+  },
+  "targetOperators": [],
+  "outreachCampaign": {
+    "urgency": "TOTAL_OUTAGE",
+    "templates": {
+      "urgent": {
+        "subject": "🚨 IC Mesh Emergency: Network Down - Immediate Help Needed",
+        "body": "Hi there!\n\nWe have an emergency situation - the IC Mesh network currently has zero active nodes and cannot process any customer jobs. Your node was a valuable part of our network, and we desperately need your help to restore service.\n\nEMERGENCY INCENTIVES:\n• 2x earnings for first 48 hours back online\n• $10 immediate bonus upon reconnection\n• Priority support for any setup issues\n\nYour node details:\n- Capabilities: {capabilities}\n- Previous success rate: {successRate}%\n- Last seen: {hoursOffline} hours ago\n\nCan you help us get back online? Every minute counts.\n\nQuick reconnect: {reconnectInstructions}\n\nThank you,\nIC Mesh Team",
+        "incentives": [
+          "2x_earnings_48h",
+          "bonus_10_immediate",
+          "priority_support"
+        ]
+      }
+    },
+    "targetingRules": {
+      "highPriority": [],
+      "mediumPriority": [],
+      "lowPriority": []
+    },
+    "timeline": [
+      {
+        "hour": 0,
+        "action": "Contact top 5 operators immediately"
+      },
+      {
+        "hour": 2,
+        "action": "Expand to top 15 operators"
+      },
+      {
+        "hour": 6,
+        "action": "Contact all high priority operators"
+      },
+      {
+        "hour": 12,
+        "action": "Begin medium priority outreach"
+      },
+      {
+        "hour": 24,
+        "action": "Full network outreach if still critical"
+      }
+    ]
+  },
+  "incentiveProgram": {
+    "emergency": true,
+    "bonusPool": 250,
+    "incentives": [
+      {
+        "name": "Emergency Reconnection Bonus",
+        "amount": 10,
+        "condition": "First 5 nodes to reconnect within 24 hours",
+        "cost": 50
+      },
+      {
+        "name": "Double Earnings Period",
+        "multiplier": 2,
+        "duration": "48 hours",
+        "condition": "All returning nodes",
+        "estimatedCost": 200
+      },
+      {
+        "name": "Priority Support",
+        "value": "Dedicated setup assistance",
+        "condition": "All returning operators",
+        "cost": 0
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "phase": "Immediate (0-2 hours)",
+      "actions": [
+        "Run infrastructure diagnostics",
+        "Contact top 5 operators with emergency incentives",
+        "Verify server and database status",
+        "Check for obvious connection blockers"
+      ]
+    },
+    {
+      "phase": "Short-term (2-24 hours)",
+      "actions": [
+        "Expand outreach based on response rates",
+        "Provide setup support to returning operators",
+        "Monitor network recovery progress",
+        "Adjust incentives based on effectiveness"
+      ]
+    },
+    {
+      "phase": "Medium-term (1-7 days)",
+      "actions": [
+        "Full operator outreach campaign",
+        "Implement infrastructure improvements",
+        "Add monitoring to prevent future outages",
+        "Review and optimize retention strategies"
+      ]
+    },
+    {
+      "phase": "Long-term (1+ weeks)",
+      "actions": [
+        "Build operator community features",
+        "Implement loyalty programs",
+        "Add automated health monitoring",
+        "Create backup node deployment systems"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "category": "Infrastructure Diagnostics",
+      "commands": [
+        "ps aux | grep node",
+        "netstat -tlnp | grep 8333",
+        "curl -f http://localhost:8333/status",
+        "tail -n 50 mesh.log",
+        "sqlite3 mesh.db \"SELECT COUNT(*) FROM nodes;\""
+      ]
+    },
+    {
+      "category": "Recovery Monitoring",
+      "commands": [
+        "watch -n 10 \"curl -s http://localhost:8333/nodes | jq length\"",
+        "node -e \"setInterval(() => console.log(new Date(), \\\"Nodes:\\\", require(\\\"./scripts/capacity-monitor.js\\\").getActiveNodes().length), 30000)\""
+      ]
+    }
+  ]
+}
