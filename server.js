@@ -178,6 +178,83 @@ db.exec(`
 try { db.exec('ALTER TABLE jobs ADD COLUMN progress TEXT'); } catch(e) {}
 try { db.exec('ALTER TABLE nodes ADD COLUMN manifests TEXT DEFAULT \'{}\''); } catch(e) {}
 
+// === Benchmarks table (Protocol v2: Proof primitive) ===
+db.exec(`
+  CREATE TABLE IF NOT EXISTS benchmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nodeId TEXT NOT NULL,
+    capability TEXT NOT NULL,
+    rtf REAL,
+    duration_ms INTEGER,
+    passed INTEGER DEFAULT 0,
+    warm INTEGER DEFAULT 0,
+    output_sample TEXT,
+    timestamp INTEGER NOT NULL,
+    UNIQUE(nodeId, capability, timestamp)
+  );
+  CREATE INDEX IF NOT EXISTS idx_benchmarks_node_cap ON benchmarks(nodeId, capability);
+`);
+
+// === Benchmark stats view (rolling window) ===
+const getBenchmarkStats = db.prepare(`
+  SELECT nodeId, capability,
+    COUNT(*) as sample_count,
+    AVG(rtf) as avg_rtf,
+    MIN(rtf) as min_rtf,
+    MAX(rtf) as max_rtf,
+    MAX(timestamp) as last_updated,
+    SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) as passed_count
+  FROM benchmarks
+  WHERE nodeId = ? AND capability = ?
+  ORDER BY timestamp DESC
+  LIMIT 20
+`);
+
+const insertBenchmark = db.prepare(`
+  INSERT INTO benchmarks (nodeId, capability, rtf, duration_ms, passed, warm, output_sample, timestamp)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const getRecentBenchmarks = db.prepare(`
+  SELECT * FROM benchmarks
+  WHERE nodeId = ? AND capability = ?
+  ORDER BY timestamp DESC
+  LIMIT 20
+`);
+
+// === Affinity map (in-memory, TTL-based) ===
+const affinityMap = new Map(); // affinity_key -> { nodeId, lastSeen, jobCount }
+const AFFINITY_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function getAffinityNode(affinityKey) {
+  if (!affinityKey) return null;
+  const entry = affinityMap.get(affinityKey);
+  if (!entry) return null;
+  if (Date.now() - entry.lastSeen > AFFINITY_TTL_MS) {
+    affinityMap.delete(affinityKey);
+    return null;
+  }
+  return entry.nodeId;
+}
+
+function updateAffinity(affinityKey, nodeId) {
+  if (!affinityKey) return;
+  const existing = affinityMap.get(affinityKey);
+  affinityMap.set(affinityKey, {
+    nodeId,
+    lastSeen: Date.now(),
+    jobCount: (existing?.nodeId === nodeId ? (existing.jobCount || 0) : 0) + 1
+  });
+}
+
+// Clean stale affinity entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of affinityMap) {
+    if (now - entry.lastSeen > AFFINITY_TTL_MS) affinityMap.delete(key);
+  }
+}, 5 * 60 * 1000);
+
 // ===== PREPARED STATEMENTS =====
 const stmts = {
   upsertNode: db.prepare(`
@@ -462,17 +539,32 @@ function getAvailableJobs(nodeId) {
   const nodeCaps = node ? JSON.parse(node.capabilities || '[]') : [];
   const nodeModels = node ? JSON.parse(node.models || '[]') : [];
   
-  return pending.filter(row => {
+  const filtered = pending.filter(row => {
     const req = JSON.parse(row.requirements || '{}');
     if (req.capability) {
       const requiredCap = aliasCapability(req.capability);
-      // Check both original and aliased capability names for compatibility
       if (!nodeCaps.includes(requiredCap) && !nodeCaps.includes(req.capability)) return false;
     }
     if (req.model && !nodeModels.includes(req.model)) return false;
     if (req.minRAM && node && node.ramFreeMB < req.minRAM) return false;
     return true;
-  }).map(jobToJSON);
+  });
+
+  // Sort: affinity-matched jobs first, then by creation time
+  filtered.sort((a, b) => {
+    const reqA = JSON.parse(a.requirements || '{}');
+    const reqB = JSON.parse(b.requirements || '{}');
+    const payloadA = JSON.parse(a.payload || '{}');
+    const payloadB = JSON.parse(b.payload || '{}');
+    const affinityA = reqA.affinity_key || payloadA.affinity_key;
+    const affinityB = reqB.affinity_key || payloadB.affinity_key;
+    const matchA = affinityA && getAffinityNode(affinityA) === nodeId ? 1 : 0;
+    const matchB = affinityB && getAffinityNode(affinityB) === nodeId ? 1 : 0;
+    if (matchA !== matchB) return matchB - matchA; // affinity matches first
+    return a.createdAt - b.createdAt; // then oldest first
+  });
+
+  return filtered.map(jobToJSON);
 }
 
 function claimJob(jobId, nodeId) {
@@ -558,6 +650,32 @@ function completeJob(jobId, nodeId, result) {
   }
   
   const completed = jobToJSON(stmts.getJob.get(jobId));
+
+  // Store benchmark/performance data as a Proof (Protocol v2)
+  try {
+    const reqs = safeJsonParse(job.requirements, {}, 'job requirements');
+    const rawCap = reqs.capability || job.type;
+    const capability = aliasCapability(rawCap); // Store under canonical name
+    // RTF: if we know input duration, compute realtime factor
+    const inputDuration = payload.duration_seconds || payload.duration || null;
+    const rtf = inputDuration ? (inputDuration / (computeMs / 1000)) : null;
+    
+    if (capability && computeMs > 0) {
+      insertBenchmark.run(
+        nodeId, capability, rtf, computeMs,
+        1, // passed (completed successfully)
+        1, // warm (real job, not cold benchmark)
+        null, // output_sample
+        now
+      );
+    }
+
+    // Update affinity
+    const affinityKey = reqs.affinity_key || payload.affinity_key;
+    updateAffinity(affinityKey, nodeId);
+  } catch (e) {
+    // Non-critical: don't fail job completion over benchmark logging
+  }
   
   // Notify via WebSocket
   broadcastEvent('job.completed', { jobId, type: completed.type, computeMs, nodeId, payout: { node: nodeCut, treasury: treasuryCut, infra: infraCut } });
@@ -826,7 +944,181 @@ const server = http.createServer(async (req, res) => {
       const active = getActiveNodes();
       return json(res, { nodes: active, total: Object.keys(active).length });
     }
-    
+
+    // ---- Estimate Endpoint (Protocol v2) ----
+    if (method === 'POST' && pathname === '/estimate') {
+      const data = await parseBody(req);
+      const { capability, duration_seconds, file_size_mb, model, affinity_key } = data;
+      
+      if (!capability) return json(res, { error: 'capability is required' }, 400);
+      
+      const cutoff = Date.now() - 120000;
+      const activeNodes = stmts.getActiveNodes.all(cutoff);
+      const resolvedCap = aliasCapability(capability);
+      
+      const estimates = [];
+      for (const node of activeNodes) {
+        const caps = JSON.parse(node.capabilities || '[]');
+        if (!caps.includes(resolvedCap) && !caps.includes(capability)) continue;
+        
+        // Check quarantine
+        const flags = JSON.parse(node.flags || '{}');
+        if (flags.quarantined) continue;
+        
+        // Get benchmark data (stored under canonical name via aliasCapability)
+        const samples = getRecentBenchmarks.all(node.nodeId, resolvedCap);
+        const stats = getBenchmarkStats.get(node.nodeId, resolvedCap);
+        
+        // Compute RTF stats
+        let p50_rtf = null, p95_rtf = null, confidence = 'none';
+        if (samples.length > 0) {
+          const rtfs = samples.filter(s => s.rtf != null).map(s => s.rtf).sort((a, b) => a - b);
+          if (rtfs.length > 0) {
+            p50_rtf = rtfs[Math.floor(rtfs.length * 0.5)];
+            p95_rtf = rtfs[Math.floor(rtfs.length * 0.95)];
+          }
+          const lastTs = Math.max(...samples.map(s => s.timestamp));
+          const staleness = Date.now() - lastTs;
+          
+          if (samples.length >= 10 && staleness < 6 * 3600000) confidence = 'high';
+          else if (samples.length >= 3 && staleness < 24 * 3600000) confidence = 'medium';
+          else confidence = 'low';
+        }
+        
+        // Compute estimated time
+        let estimatedComputeSeconds = null;
+        if (p50_rtf && duration_seconds) {
+          estimatedComputeSeconds = Math.round(duration_seconds / p50_rtf);
+        }
+        
+        // Transfer time estimate (rough: assume 10 MB/s for remote, 0 for shared storage)
+        const manifests = JSON.parse(node.manifests || '{}');
+        const hasSharedStorage = data.storage_pool && 
+          Object.values(manifests).some(m => m.storage?.mounts?.some(s => s.id === data.storage_pool));
+        const estimatedTransferSeconds = hasSharedStorage ? 0 :
+          (file_size_mb ? Math.round(file_size_mb / 10) : null);
+        
+        // Affinity match
+        const affinityMatch = affinity_key ? getAffinityNode(affinity_key) === node.nodeId : false;
+        
+        // Current load (rough: use cpuIdle)
+        const currentLoad = Math.max(0, Math.min(1, 1 - (node.cpuIdle || 50) / 100));
+        
+        estimates.push({
+          node_id: node.nodeId,
+          node_name: node.name,
+          estimated_compute_seconds: estimatedComputeSeconds,
+          estimated_transfer_seconds: estimatedTransferSeconds,
+          estimated_total_seconds: (estimatedComputeSeconds || 0) + (estimatedTransferSeconds || 0) || null,
+          confidence,
+          benchmark_samples: samples.length,
+          p50_rtf,
+          p95_rtf,
+          has_shared_storage: !!hasSharedStorage,
+          current_load: Math.round(currentLoad * 100) / 100,
+          affinity_match: affinityMatch
+        });
+      }
+      
+      // Sort: best total time first, break ties by confidence then load
+      const confidenceOrder = { high: 3, medium: 2, low: 1, none: 0 };
+      estimates.sort((a, b) => {
+        // Nodes with estimates first
+        if (a.estimated_total_seconds && !b.estimated_total_seconds) return -1;
+        if (!a.estimated_total_seconds && b.estimated_total_seconds) return 1;
+        if (a.estimated_total_seconds && b.estimated_total_seconds) {
+          const diff = a.estimated_total_seconds - b.estimated_total_seconds;
+          if (Math.abs(diff) > 5) return diff; // >5s difference is meaningful
+        }
+        // Then by confidence
+        const confDiff = (confidenceOrder[b.confidence] || 0) - (confidenceOrder[a.confidence] || 0);
+        if (confDiff !== 0) return confDiff;
+        // Then by load
+        return a.current_load - b.current_load;
+      });
+      
+      const bestNode = estimates[0]?.node_id || null;
+      const estimatedCost = duration_seconds ? Math.max(1, Math.round(duration_seconds)) : null;
+      
+      return json(res, {
+        estimates,
+        best_node: bestNode,
+        estimated_cost_ints: estimatedCost,
+        nodes_evaluated: estimates.length
+      });
+    }
+
+    // ---- Benchmark Data (Protocol v2) ----
+    if (method === 'GET' && pathname.startsWith('/benchmarks/')) {
+      const parts = pathname.split('/');
+      const nodeId = parts[2];
+      const capability = parts[3];
+      
+      if (!nodeId) return json(res, { error: 'nodeId required: /benchmarks/:nodeId[/:capability]' }, 400);
+      
+      if (capability) {
+        const samples = getRecentBenchmarks.all(nodeId, aliasCapability(capability));
+        const stats = getBenchmarkStats.get(nodeId, aliasCapability(capability));
+        
+        let status = 'new';
+        if (samples.length >= 3) {
+          const lastTs = Math.max(...samples.map(s => s.timestamp));
+          status = (Date.now() - lastTs > 24 * 3600000) ? 'stale' : 'benchmarked';
+        } else if (samples.length > 0) {
+          status = 'benchmarking';
+        }
+        if (samples.length > 0 && !samples[0].passed) status = 'failed';
+        
+        return json(res, {
+          node_id: nodeId,
+          capability,
+          status,
+          samples: samples.map(s => ({
+            rtf: s.rtf,
+            duration_ms: s.duration_ms,
+            passed: !!s.passed,
+            warm: !!s.warm,
+            timestamp: s.timestamp
+          })),
+          stats: stats ? {
+            sample_count: stats.sample_count,
+            avg_rtf: stats.avg_rtf ? Math.round(stats.avg_rtf * 100) / 100 : null,
+            min_rtf: stats.min_rtf ? Math.round(stats.min_rtf * 100) / 100 : null,
+            max_rtf: stats.max_rtf ? Math.round(stats.max_rtf * 100) / 100 : null,
+            accuracy_rate: stats.sample_count > 0 ? Math.round(stats.passed_count / stats.sample_count * 100) / 100 : null,
+            last_updated: stats.last_updated
+          } : null
+        });
+      } else {
+        // All benchmarks for a node
+        const all = db.prepare(`
+          SELECT capability, COUNT(*) as samples, AVG(rtf) as avg_rtf, MAX(timestamp) as last_updated,
+            SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) as passed
+          FROM benchmarks WHERE nodeId = ? GROUP BY capability
+        `).all(nodeId);
+        
+        return json(res, {
+          node_id: nodeId,
+          capabilities: all.map(row => ({
+            capability: row.capability,
+            samples: row.samples,
+            avg_rtf: row.avg_rtf ? Math.round(row.avg_rtf * 100) / 100 : null,
+            accuracy_rate: row.samples > 0 ? Math.round(row.passed / row.samples * 100) / 100 : null,
+            last_updated: row.last_updated
+          }))
+        });
+      }
+    }
+
+    // ---- Affinity Map (debug endpoint) ----
+    if (method === 'GET' && pathname === '/affinity') {
+      const entries = {};
+      for (const [key, val] of affinityMap) {
+        entries[key] = { ...val, age_seconds: Math.round((Date.now() - val.lastSeen) / 1000) };
+      }
+      return json(res, { affinity: entries, count: affinityMap.size });
+    }
+
     // ---- Job Queue ----
     if (method === 'POST' && pathname === '/jobs') {
       const data = await parseBody(req);

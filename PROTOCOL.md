@@ -1,487 +1,545 @@
-# IC Mesh Protocol v0.2
+# IC Mesh Protocol v2.0
 
-*A protocol for decentralized compute coordination — secure, verifiable, trust-building.*
-
----
-
-## Overview
-
-The IC Mesh Protocol defines how independent compute nodes discover each other, negotiate trust, exchange work, and verify results. It's designed to scale from two friends sharing a Mac Mini to a global mesh of thousands of heterogeneous machines.
-
-**Design principles:**
-- **No central authority required** — hubs coordinate, they don't control
-- **Trust is earned** — nodes build reputation through reliable work
-- **Verify, don't trust** — results are hashed, signed, and optionally consensus-verified
-- **Privacy by default** — payloads can be end-to-end encrypted
-- **Simple at the edges** — a node should be easy to run; complexity lives in the protocol
+_A protocol for distributed compute, storage, and services — negotiated by machines, for machines._
 
 ---
 
-## 1. Identity
+## Design Principles
 
-Every node has a cryptographic identity.
-
-### 1.1 Key Generation
-
-On first run, a node generates an **Ed25519 keypair**:
-
-```
-Private key → stored locally at ~/.ic-mesh/node.key (never leaves the machine)
-Public key  → registered with the network as the node's identity
-Node ID     → SHA-256(public_key)[:16] (hex, 32 chars)
-```
-
-Why Ed25519:
-- Fast key generation and signing
-- Small keys (32 bytes) and signatures (64 bytes)  
-- Battle-tested (SSH, Signal, WireGuard all use it)
-- No configuration — one curve, no choices to get wrong
-
-### 1.2 Node Identity File
-
-```json
-{
-  "nodeId": "a3f8b2c1e9d04567890abcdef1234567",
-  "publicKey": "base64-encoded-ed25519-public-key",
-  "name": "hilo-mac-mini",
-  "owner": "drake",
-  "region": "hawaii",
-  "created": "2026-02-24T00:00:00Z",
-  "version": "0.2.0"
-}
-```
-
-### 1.3 Hub Registration
-
-```
-Node                                Hub
-  |                                  |
-  |-- REGISTER(identity, pubkey) --> |
-  |                                  |-- verify pubkey format
-  |                                  |-- store in registry
-  |<-- OK(nodeId, challenge) ------- |
-  |                                  |
-  |-- PROVE(sign(challenge)) -----> |
-  |                                  |-- verify signature
-  |<-- VERIFIED -------------------- |
-```
-
-After verification, the node is **registered but untrusted** (trust level 0).
+1. **Primitive composition.** Six objects compose into everything: Node, Resource, Deal, Job, Proof, Reputation.
+2. **Drop a file, get a capability.** Handler YAML specs declare what a node can do. No code changes.
+3. **Proof, not claims.** Benchmarks validate capabilities. Reputation is computed from evidence.
+4. **Data before optimization.** Collect benchmark data first, build smart routing from evidence.
+5. **Private hubs are first-class.** The protocol works identically on LAN and public internet.
+6. **No blockchain. No token.** Trust comes from identities, escrow, proofs, and reputation.
+7. **Incremental adoption.** Old clients work. New features are additive, not breaking.
 
 ---
 
-## 2. Transport
+## 1. Primitives
 
-### 2.1 WebSocket (Primary)
+### 1.1 Node
 
-Persistent bidirectional connection replaces HTTP polling.
-
-```
-wss://hub.example.com/mesh/ws?nodeId=<id>&sig=<signed-timestamp>
-```
-
-Benefits:
-- **Instant job dispatch** — hub pushes jobs to nodes, no polling delay
-- **Real-time status** — heartbeats, job progress, network events
-- **Lower overhead** — one connection vs repeated HTTP requests
-- **NAT-friendly** — outbound connection from node, works behind firewalls
-
-### 2.2 Message Format
-
-All messages are JSON with a standard envelope:
-
-```json
-{
-  "type": "job.submit | job.claim | job.result | node.heartbeat | ...",
-  "id": "message-uuid",
-  "timestamp": 1771895056512,
-  "from": "node-id",
-  "signature": "base64-ed25519-signature-of-payload",
-  "payload": { ... }
-}
-```
-
-The `signature` field signs `SHA-256(JSON.stringify(payload) + timestamp)`.
-
-### 2.3 Fallback: HTTP
-
-For environments where WebSocket isn't available, the existing HTTP polling API remains as a fallback. All HTTP requests include:
+A machine participating in the network.
 
 ```
-X-Node-Id: <nodeId>
-X-Timestamp: <unix-ms>
-X-Signature: <sign(method + path + timestamp)>
-```
-
----
-
-## 3. Discovery
-
-### 3.1 Well-Known Endpoint
-
-Any hub advertises itself at:
-
-```
-GET /.well-known/ic-mesh.json
-```
-
-```json
-{
-  "protocol": "ic-mesh",
-  "version": "0.2.0",
-  "hub": {
-    "name": "Intelligence Club Hub",
-    "websocket": "wss://moilol.com/mesh/ws",
-    "http": "https://moilol.com/mesh",
-    "publicKey": "base64-hub-pubkey"
-  },
-  "network": {
-    "nodes": 47,
-    "capabilities": ["inference", "transcribe", "ffmpeg", "gpu-nvidia", "gpu-metal"],
-    "totalCores": 312,
-    "totalRAM_GB": 1240
-  },
-  "policies": {
-    "open": true,
-    "minTrustForJobs": 1,
-    "networkFee": 0.20
+Node {
+  id: string              # Unique, persistent (stored in .node-id)
+  name: string            # Human-readable (hostname)
+  owner: string           # Operator identity
+  pubkey: ed25519?        # Identity verification (future)
+  capabilities: string[]  # What it can do (from handler YAML + auto-detect)
+  manifests: {}           # Rich capability declarations (from handler YAML)
+  resources: {            # What it has
+    cpuCores, ramMB, ramFreeMB, cpuIdle,
+    gpuVRAM, diskFreeGB
   }
+  storage_pools: []       # Shared storage mounts (from handler YAML)
+  region: string          # Network topology hint
+  status: online|offline  # Derived from lastSeen
 }
 ```
 
-### 3.2 Multi-Hub Federation (Future)
+**Current implementation:** `nodes` table in SQLite. Registration via `POST /nodes/register`. Rich manifests sent from handler YAML scan.
 
-Hubs can peer with each other:
+### 1.2 Resource
 
-```
-Hub A <---> Hub B <---> Hub C
-```
-
-A job submitted to Hub A can overflow to Hub B's nodes if A lacks capacity. Hubs exchange signed capability summaries. This is how the mesh becomes truly decentralized — no single hub is a bottleneck.
-
----
-
-## 4. Trust & Reputation
-
-### 4.1 Trust Levels
+Something a node offers to the network. Currently implicit (flat fields on Node); moving toward typed first-class objects.
 
 ```
-Level 0 — Registered    : Just joined. Can receive ping jobs only.
-Level 1 — Verified      : Completed 5+ jobs correctly. Can receive standard jobs.
-Level 2 — Trusted       : 50+ jobs, 95%+ success rate. Priority routing.
-Level 3 — Core          : 500+ jobs, 99%+ success, vouched by Level 3 node. Can verify others.
-```
-
-### 4.2 Reputation Score
-
-```
-reputation = (jobs_completed * success_rate * uptime_factor) - penalties
-
-success_rate  = successful_jobs / total_claimed_jobs
-uptime_factor = hours_online_last_30d / (30 * 24)
-penalties     = failed_jobs * 5 + timeout_jobs * 2 + bad_results * 10
-```
-
-### 4.3 Vouching
-
-A Level 3 node can vouch for another node, instantly promoting it to Level 1. This creates a web of trust — you join through someone who trusts you.
-
-### 4.4 Verification Methods
-
-| Method | Speed | Trust Required | Use Case |
-|--------|-------|---------------|----------|
-| **None** | Instant | Level 2+ | Trusted nodes, low-stakes jobs |
-| **Hash check** | Fast | Level 1+ | Deterministic outputs (transcription, conversion) |
-| **Dual-execute** | 2x cost | Level 0+ | Untrusted nodes, critical jobs |
-| **Spot check** | Async | Any | Random re-execution of completed jobs |
-
-**Hash check**: For deterministic jobs, the hub can re-run on a trusted node and compare output hashes. If they match, the untrusted node's result is confirmed.
-
-**Dual-execute**: Job is sent to two independent nodes. Results are compared. If they match, both nodes get credit. If they differ, a third (trusted) node arbitrates.
-
----
-
-## 5. Job Lifecycle
-
-### 5.1 States
-
-```
-SUBMITTED → ROUTED → CLAIMED → EXECUTING → COMPLETED
-                                    ↓
-                                  FAILED
-                                    ↓
-                                RETRY (up to 3x)
-```
-
-### 5.2 Job Submission
-
-```json
-{
-  "type": "job.submit",
-  "payload": {
-    "jobType": "transcribe",
-    "input": {
-      "url": "https://example.com/audio.m4a",
-      "hash": "sha256:abc123...",
-      "encrypted": false
-    },
-    "requirements": {
-      "capability": "whisper",
-      "minTrust": 1,
-      "minRAM": 4000,
-      "maxLatency": 300000,
-      "verification": "hash"
-    },
-    "priority": "normal",
-    "maxCost": 5.0
+Resource {
+  type: compute|storage|bandwidth|memory|gpu
+  capability: string      # Links to handler YAML capability name
+  capacity: number        # How much available
+  unit: string            # ints/second, GB, Mbps
+  price_ints: number      # Ints per unit per time period
+  constraints: {
+    min_contract_seconds,  max_contract_seconds,
+    availability_windows, concurrent_limit
   }
+  benchmark: {}           # Performance data from Proofs
 }
 ```
 
-### 5.3 Job Routing
+**Current implementation:** Resources reported as flat fields in node registration. Handler YAML `resources:` block defines per-capability constraints. Not yet a separate table.
 
-The hub's compute broker scores eligible nodes:
+### 1.3 Deal
+
+An agreement between two parties about resource usage over time. The SLA primitive.
 
 ```
-score = (capability_match * 0.3)
-      + (resource_fit * 0.25)
-      + (trust_level * 0.25)
-      + (proximity * 0.1)
-      + (current_load_inverse * 0.1)
-```
-
-Job is pushed to the highest-scoring available node via WebSocket.
-
-### 5.4 Job Completion
-
-```json
-{
-  "type": "job.result",
-  "payload": {
-    "jobId": "abc123",
-    "status": "completed",
-    "output": {
-      "data": { "transcript": "..." },
-      "hash": "sha256:def456...",
-      "computeMs": 71948
-    },
-    "signature": "base64-signature-of-output-hash"
+Deal {
+  id: string
+  provider: node_id
+  consumer: string        # node_id, hub_id, or account email
+  resource_type: string   # capability name
+  terms: {
+    duration_seconds: number
+    capacity: number
+    price_per_unit_ints: number
+    total_price_ints: number
+    availability: number        # Required uptime (e.g., 0.99)
+    penalty_ints: number        # Collateral forfeited on breach
+    renewal: auto|manual|none
+    notice_period_seconds: number
   }
+  state: proposed|accepted|active|completed|breached|terminated
+  provider_sig: string?
+  consumer_sig: string?
+  created_at: timestamp
+  activated_at: timestamp?
+  expires_at: timestamp
 }
 ```
 
-The signature proves this specific node produced this specific output. Non-repudiable.
+**Current implementation:** Not yet built. Schema defined, implementation in Phase 2.
+
+### 1.4 Job
+
+A unit of work to be executed. Short-lived (seconds to hours).
+
+```
+Job {
+  id: string
+  type: string              # Capability required
+  payload: {}               # Input data or reference
+  requirements: {
+    capability: string
+    model: string?
+    min_ram_mb: number?
+    affinity_key: string?   # Prefer same node as previous jobs with this key
+    storage_pool: string?   # Prefer nodes with this shared storage
+  }
+  budget_ints: number?      # Max willing to pay (future)
+  deadline: timestamp?      # Must complete by (future)
+  deal_id: string?          # If this job is under a Deal
+  state: pending|claimed|running|completed|failed
+  claimed_by: node_id?
+  result: {}?
+  compute_ms: number?
+  created_at: timestamp
+}
+```
+
+**Current implementation:** `jobs` table with full lifecycle. Missing: `affinity_key` in requirements, `budget_ints`, `deadline`, `deal_id`.
+
+### 1.5 Proof
+
+Evidence that a node performed work or holds a resource. The trust primitive.
+
+```
+Proof {
+  id: string
+  type: benchmark|completion|storage|uptime
+  node_id: string
+  capability: string
+  evidence: {
+    input_hash: string?       # What was the input
+    output_hash: string?      # What was produced  
+    output_sample: string?    # Snippet for validation
+    duration_ms: number       # How long it took
+    rtf: number?              # Realtime factor (for transcription etc)
+    warm: boolean             # Was the node warmed up
+    passed: boolean           # Did output match expected
+    verified_by: string?      # Who checked it (hub or peer)
+  }
+  timestamp: number
+}
+```
+
+**Current implementation:** Not yet built. Benchmark block defined in handler YAML. Implementation in this PR.
+
+### 1.6 Reputation
+
+Derived from Proofs. Not stored as a single number — computed from three separate signals.
+
+```
+Reputation(node, capability) {
+  completion_rate: number     # Jobs completed / jobs claimed (catches crashes)
+  accuracy_rate: number       # Benchmark passes / benchmark attempts (catches degradation)
+  latency_consistency: number # p95_rtf / p50_rtf ratio (catches throttling/noisy neighbors)
+  
+  # Long-term deal signals (Phase 2)
+  uptime: number              # Actual vs promised availability
+  deal_honor_rate: number     # Deals completed vs deals breached
+  
+  # Metadata
+  sample_count: number
+  last_updated: timestamp
+  confidence: high|medium|low|none
+}
+```
+
+**Current implementation:** `ledger` table tracks earned/spent/jobs. `node_health_scores` exists. Not yet computed from proofs.
 
 ---
 
-## 6. Payload Security
+## 2. Handler Declaration (YAML Spec)
 
-### 6.1 Encryption Levels
+Operators declare capabilities by dropping YAML files in `handlers/`. See individual handler files for examples.
 
-| Level | Description | Overhead |
-|-------|------------|----------|
-| **Transport** | TLS (WSS) — encrypted in transit | Minimal |
-| **Signed** | Payloads signed by submitter + worker | ~1ms |
-| **Encrypted** | E2E encrypted — hub can't read payload | Key exchange |
-| **Confidential** | Encrypted + trusted execution environment | Hardware TEE |
-
-### 6.2 End-to-End Encryption
-
-For sensitive jobs (medical records, private conversations):
+### File Location
 
 ```
-Submitter                          Worker
-    |                                |
-    |-- ECDH key exchange ---------> |
-    |<-- shared secret ------------- |
-    |                                |
-    |-- AES-256-GCM(payload) ------> |
-    |                                |-- decrypt, process
-    |<-- AES-256-GCM(result) ------- |
+ic-mesh/handlers/
+  whisper.yaml          # Speech-to-text
+  ollama.yaml           # LLM inference
+  stable-diffusion.yaml # Image generation
+  comfyui.yaml          # Node-based workflows
+  tesseract.yaml        # OCR
+  custom.yaml           # Operator-defined
 ```
 
-The hub routes the job but never sees the plaintext. It only knows the job type, requirements, and metadata.
+### Schema
+
+```yaml
+capability: whisper                      # Required: primary name
+namespace: whisper.cpp                   # Optional: disambiguation at scale
+aliases: [transcription, transcribe]     # Alternative names
+version: "1.7.2"                         # Software version
+description: "Speech-to-text"
+
+detect:                                  # How to check if available
+  binary: whisper-cli
+  fallback_binaries: [whisper]
+  probe_cmd: "whisper-cli --version"
+  probe_url: null
+  fallback_urls: []
+  files: []
+  env: []
+
+models:                                  # Discover available models
+  scan_dirs: [~/.cache/whisper]
+  pattern: "ggml-*.bin"
+  parse_name: "ggml-(?<name>.+)\\.bin"
+  list_cmd: null
+
+invoke:                                  # How to execute jobs
+  cmd: "whisper-cli -m {model_path} -f {input} -t {threads} -otxt"
+  shell: true
+  stdin: json|none|raw
+  output: stdout|file|json
+  output_file: "{input}.txt"
+  result_type: text|json|binary
+  env: {}
+
+resources:                               # Limits and requirements
+  timeout: 600
+  max_input_mb: 500
+  min_ram_mb: 1024
+  gpu_required: false
+  gpu_backends: [metal, cuda]
+  concurrent: 1
+
+benchmark:                               # Proof-of-capability test
+  expected_output: "the quick brown fox"
+  match_threshold: 0.7
+  timeout: 30
+
+storage:                                 # Shared filesystem access
+  mounts:
+    - id: truenas-tank
+      path: /mnt/tank/data
+      type: nfs
+      writable: true
+
+pricing:                                 # Operator pricing hints
+  multiplier: 1.0
+  min_ints: 1
+  rate_per_second: 1
+```
+
+### Template Variables
+
+| Variable | Description |
+|----------|-------------|
+| `{input}` | Path to downloaded input file |
+| `{output_dir}` | Temporary output directory |
+| `{model_path}` | Full path to selected model file |
+| `{model_name}` | Model name |
+| `{threads}` | CPU cores - 1 |
+| `{job_id}` | Job identifier |
+| `{job_type}` | Job type string |
+
+### Execution Priority
+
+1. **YAML handler spec** (declarative, in `handlers/`)
+2. **node-config.json handler** (legacy config format)
+3. **Built-in handler** (hardcoded in client.js)
+
+### Namespacing
+
+At scale: `whisper.cpp/transcribe` vs `openai/transcribe`. Backward compatible — unnamespaced requests match any provider.
 
 ---
 
-## 7. Economics
+## 3. Benchmark Protocol
 
-### 7.1 Compute Credits
+### Purpose
 
-```
-1 credit = 1 minute of baseline compute (1 CPU core, 4GB RAM)
+Prove that a node can actually do what it declares, and measure how fast.
 
-Multipliers:
-  GPU work     = 4x credits
-  High-trust   = 1.2x credits
-  Rush priority = 2x credits
-  Encrypted    = 1.1x credits
-```
+### Flow
 
-### 7.2 Fee Structure
+1. Node registers with hub, sends capability manifests
+2. Hub checks: does this capability have a benchmark spec?
+3. If yes and no recent benchmark exists: hub submits a `_benchmark` job to that node
+4. Node executes using handler YAML's `benchmark:` block
+5. Node returns: output text + duration_ms
+6. Hub validates output against `expected_output` (fuzzy match, Levenshtein ≥ threshold)
+7. Hub stores result as a Proof in the `benchmarks` table
+8. Periodic re-benchmark on heartbeat (every N checkins, configurable)
 
-```
-Job cost = compute_minutes * multiplier
+### Rolling Window
 
-Distribution:
-  80% → worker node
-  15% → network treasury (infrastructure, development)
-   5% → hub operator (if federated)
-```
+A single cold benchmark misleads (M1 Max with cold Metal shader cache = 3x slower than warm).
 
-### 7.3 Settlement
-
-Credits are tracked on a signed ledger. Each entry is a receipt:
+Per node, per capability:
 
 ```json
 {
-  "jobId": "abc123",
-  "worker": "node-id",
-  "requester": "node-id",
-  "credits": 1.2,
-  "workerSig": "...",
-  "hubSig": "...",
-  "timestamp": 1771895134107
+  "node_id": "9b6a3b5841dc2890",
+  "capability": "whisper",
+  "status": "benchmarked",
+  "samples": [
+    { "rtf": 13.2, "duration_ms": 380, "passed": true, "warm": true, "ts": 1772228000000 },
+    { "rtf": 4.1, "duration_ms": 1219, "passed": true, "warm": false, "ts": 1772200000000 }
+  ],
+  "p50_rtf": 12.8,
+  "p95_rtf": 14.1,
+  "sample_count": 15,
+  "last_updated": 1772228000000
 }
 ```
 
-Both parties sign. Disputes can be resolved by replaying the signed job chain.
+### Benchmark Status
 
-Future: credits can be exchanged for fiat, crypto, or services outside the mesh.
+| Status | Criteria | Confidence |
+|--------|----------|------------|
+| `new` | 0 samples | none |
+| `benchmarking` | 1-2 samples | low |
+| `benchmarked` | 3+ samples, last < 24h | medium-high |
+| `stale` | Last sample > 24h | low |
+| `failed` | Last benchmark didn't pass | none |
+
+### Benchmark Reference Files
+
+Hub hosts small reference inputs per capability type:
+- `whisper`: 5-second WAV clip ("the quick brown fox jumps over the lazy dog")
+- `tesseract`: Simple image with known text
+- `ollama`: Standard prompt with expected response pattern
+- Others: defined in handler YAML `benchmark:` block
 
 ---
 
-## 8. Job Types
+## 4. Job Lifecycle
 
-### 8.1 Core Types
+### Current Flow (v1)
 
-| Type | Capability | Input | Output |
-|------|-----------|-------|--------|
-| `ping` | any | — | pong + node info |
-| `inference` | ollama | prompt, model | response text |
-| `transcribe` | whisper | audio URL | transcript text |
-| `convert` | ffmpeg | media URL, format | converted media URL |
-| `evaluate` | any | code, runtime | execution result |
+```
+Submit → Pending → [Hub matches to capable node] → Claimed → Running → Completed/Failed
+                                                                          ↓
+                                                                    [If failed: re-queue or refund]
+```
 
-### 8.2 Composite Jobs (Pipelines)
+### Enhanced Flow (v2)
 
-A pipeline chains multiple jobs:
+```
+Submit (with affinity_key, budget, deadline)
+  → Pending
+  → [Hub scores nodes: capability → load → storage → RTF → reliability]
+  → [Affinity bonus for matching nodes]
+  → Dispatched to best node
+  → Claimed
+  → Running (progress reported via heartbeat)
+  → Completed (Proof generated, reputation updated)
+  OR
+  → Failed (auto-refund, Proof of failure, reputation dinged)
+```
 
-```json
+### Affinity
+
+Jobs with the same `affinity_key` prefer the same node:
+- Hub maintains `affinity_key → { nodeId, last_seen, job_count }` map
+- Same-key jobs get scoring bonus for affiliated node
+- TTL: 30 minutes of inactivity
+- Falls back to normal routing if affiliated node is busy/dead
+
+---
+
+## 5. Estimate Endpoint
+
+```
+POST /estimate
 {
-  "type": "pipeline",
-  "steps": [
-    { "type": "transcribe", "input": { "url": "video.mp4" } },
-    { "type": "inference", "input": { "prompt": "Summarize: {{step.0.transcript}}" } }
-  ]
+  "capability": "whisper",
+  "duration_seconds": 3600,     # Primary input for compute time
+  "file_size_mb": 450,          # For transfer time estimation (separate concern)
+  "model": "large-v3-turbo",
+  "affinity_key": "project-123"
+}
+
+Response:
+{
+  "estimates": [
+    {
+      "node_id": "9b6a3b5841dc2890",
+      "node_name": "frigg",
+      "estimated_compute_seconds": 273,
+      "estimated_transfer_seconds": 12,
+      "estimated_total_seconds": 285,
+      "confidence": "high",
+      "benchmark_samples": 15,
+      "p50_rtf": 13.2,
+      "has_shared_storage": false,
+      "current_load": 0.1,
+      "affinity_match": true
+    }
+  ],
+  "best_node": "9b6a3b5841dc2890",
+  "estimated_cost_ints": 273
 }
 ```
 
-Output of step N feeds into step N+1. Each step can run on a different node.
+---
+
+## 6. Deal Lifecycle (Phase 2)
+
+### Negotiation Protocol
+
+```
+PUBLISH_ASK    → Provider announces: "I have X at price Y with terms Z"
+PUBLISH_DEMAND → Consumer announces: "I need X with budget Y and requirements Z"
+MATCH          → Hub finds compatible asks/demands
+PROPOSE_DEAL   → One party sends specific terms
+COUNTER        → Other party modifies terms
+ACCEPT         → Both sign
+ACTIVATE       → Collateral locked, work begins
+PROVE          → Ongoing evidence of fulfillment
+SETTLE         → Payment released, collateral returned, reputation updated
+```
+
+### Deal Types
+
+| Type | Duration | Example |
+|------|----------|---------|
+| **Spot** | Seconds-minutes | Transcribe this file (current jobs) |
+| **Reserved** | Hours-days | Keep llama-70b loaded in VRAM for 2 hours |
+| **Contract** | Days-months | Store 500GB at 99.9% uptime for 30 days |
+
+### Escrow
+
+Hub-held, like Stripe. Both parties' ints are locked when deal activates. No blockchain needed.
 
 ---
 
-## 9. Wire Protocol Summary
+## 7. Smart Routing (After Data Collection)
 
-### Messages (WebSocket)
+### Scoring Function
 
-| Direction | Type | Description |
-|-----------|------|-------------|
-| Node → Hub | `node.register` | Register with keypair |
-| Hub → Node | `node.challenge` | Prove identity |
-| Node → Hub | `node.prove` | Signed challenge response |
-| Node → Hub | `node.heartbeat` | I'm alive + resource update |
-| Hub → Node | `job.dispatch` | Here's a job for you |
-| Node → Hub | `job.accept` | I'll take it |
-| Node → Hub | `job.progress` | Status update (% complete) |
-| Node → Hub | `job.result` | Done, here's the output |
-| Node → Hub | `job.reject` | Can't do this right now |
-| Hub → Node | `node.kick` | You've been removed (trust violation) |
-| Any → Any | `mesh.announce` | Network-wide broadcast |
+For each capable node, compute weighted score:
 
-### HTTP Fallback
+1. **Capability match** — binary gate (pass/fail)
+2. **Current load** — `score -= load_pct * W_load`
+3. **Shared storage** — `score += W_storage` if node has job's storage pool
+4. **RTF** — `score += (1/rtf) * W_rtf` (faster = higher)
+5. **Reliability** — `score += reliability * W_reliability`
+6. **Affinity** — `score += W_affinity` if affinity_key matches
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/status` | Network status |
-| **Nodes** | | |
-| POST | `/nodes/register` | Register node |
-| GET | `/nodes` | List active nodes |
-| POST | `/nodes/onboard` | Create Stripe Express account → returns onboarding URL |
-| GET | `/nodes/:id/stripe` | Check Stripe onboarding status |
-| **Jobs** | | |
-| POST | `/jobs` | Submit job |
-| GET | `/jobs/:id` | Get job status/result |
-| GET | `/jobs/available` | Poll for available jobs |
-| POST | `/jobs/:id/claim` | Claim a job |
-| POST | `/jobs/:id/complete` | Report completion |
-| **Earnings & Payouts** | | |
-| GET | `/ledger/:nodeId` | Get compute balance |
-| GET | `/payouts` | All operator earnings |
-| GET | `/payouts/:nodeId` | Single operator earnings |
-| POST | `/cashout` | Operator cashout → Stripe Connect transfer |
-| GET | `/cashouts/:nodeId` | Cashout history + Stripe transfer details |
+**Duration-aware weights:**
+- Short jobs (< 30s): `W_storage = 0.4, W_rtf = 0.1`
+- Long jobs (> 10min): `W_storage = 0.1, W_rtf = 0.4`
 
-All mesh endpoints are served at `https://moilol.com/mesh/...` (proxied to port 8333).
+### Reliability Signals
 
-#### Site API (served directly on moilol.com)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/buy-credits` | Buy ints via Stripe Checkout (`{"email","amount":5000}`) |
-| GET | `/api/balance?email=` | Check int balance + transaction history |
-| POST | `/api/auth/send-code` | Email login code |
-| POST | `/api/auth/verify-code` | Verify code → session cookie |
-| GET | `/api/auth/me` | Current session |
-| POST | `/api/auth/keys` | Get/generate API key |
-| POST | `/api/transcribe` | Machine API: submit transcription (Bearer auth) |
-| GET | `/api/jobs/:token` | Job status + result |
-| POST | `/stripe/webhook` | Stripe payment webhook (signature verified) |
+| Signal | Formula | Catches |
+|--------|---------|---------|
+| `completion_rate` | completed / claimed | Crashes mid-job |
+| `accuracy_rate` | benchmark passes / attempts | Degraded nodes |
+| `latency_consistency` | p95_rtf / p50_rtf | Thermal throttling |
 
 ---
 
-## 10. Migration from v0.1
+## 8. Private Hubs
 
-The v0.2 protocol is backward-compatible:
+The protocol works identically on LAN and internet.
 
-1. **Phase 1**: Add key generation to client. Hub accepts both signed and unsigned requests.
-2. **Phase 2**: Add WebSocket transport alongside HTTP polling.
-3. **Phase 3**: Enable trust levels. Unsigned requests treated as Level 0.
-4. **Phase 4**: Require signatures for job completion. HTTP polling deprecated.
+```bash
+# Run a private hub
+IC_MESH_PORT=8333 node server.js
 
-Existing v0.1 nodes continue to work during the transition. They just won't earn trust.
+# Point nodes to it
+IC_MESH_SERVER=http://192.168.1.100:8333 node client.js
+```
 
----
+### Federation (Future)
 
-## 11. Scaling
-
-### Small (2-10 nodes)
-- Single hub
-- HTTP polling fine
-- Trust via personal relationships
-- No verification needed
-
-### Medium (10-100 nodes)
-- WebSocket required
-- Automated trust/reputation
-- Hash verification for new nodes
-- Regional hub preference
-
-### Large (100-10,000 nodes)
-- Hub federation
-- Geographic routing
-- Dual-execute for untrusted
-- Credit settlement periods
-- Capability-based sharding (GPU hub, CPU hub, storage hub)
-
-### Global (10,000+ nodes)
-- Hierarchical hub topology
-- DHT-based node discovery
-- Proof of useful work as consensus mechanism
-- Cross-network peering (other mesh protocols)
-- The world's largest supercomputer
+Private hubs peer with public hubs for overflow routing. Like BGP autonomous systems — each hub makes local routing decisions, no central coordinator.
 
 ---
 
-*IC Mesh Protocol v0.2 — Intelligence Club, 2026*
-*"Every node strengthens the network."*
+## 9. Trust Model
+
+### Without Blockchain
+
+| Threat | Defense |
+|--------|---------|
+| Lying about capabilities | Benchmarks (Proof) |
+| Failing to deliver | Completion tracking (Reputation) |
+| Disappearing mid-deal | Collateral escrow (Deal) |
+| Slow degradation | Rolling benchmark windows (Proof) |
+
+### Escrow
+
+Hub holds ints for active deals. Like Stripe — a trusted intermediary. If hub trust is the concern: federation means no single hub is God.
+
+---
+
+## 10. Backward Compatibility
+
+- Old clients sending string capability arrays → hub wraps as `{ capability: "name" }`
+- Old hub accepting string arrays → client sends both formats
+- Built-in handlers remain as fallbacks
+- Unnamespaced requests match any provider
+- Jobs without affinity_key, budget, deadline work exactly as before
+
+---
+
+## Implementation Status
+
+### ✅ Built
+- Node registration with rich manifests
+- Handler YAML loader + detection + model discovery + execution
+- Job lifecycle (submit → claim → complete/fail)
+- 3-tier handler fallback (YAML → config → built-in)
+- Dynamic job type validation
+- Revenue split (80/15/5)
+- Founding operator tracking
+- 5 reference handler YAMLs
+
+### 🔨 This Release
+- Benchmarks table + rolling window storage
+- Benchmark-on-registration flow
+- Estimate endpoint
+- Job affinity (affinity_key)
+
+### 📊 After 1 Week Data Collection
+- Smart routing with weighted scoring
+- Reliability signal computation
+- Duration-aware weight adjustment
+
+### 🗺️ Phase 2 (Month 2)
+- Deals table + propose/accept/activate/settle
+- Escrow against ints balance
+- Storage deals with periodic proof challenges
+- Ask/Demand publishing
+
+### 🗺️ Phase 3 (Month 3)
+- Agent-to-agent negotiation protocol
+- Hub federation (peering)
+- Ed25519 node identity
+
+### 🗺️ Phase 4+ 
+- DHT-based discovery (no central hub required)
+- Market-driven pricing
+- Agents negotiating infrastructure autonomously
