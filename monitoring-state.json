@@ -1,14 +1,37 @@
 {
-  "lastCheck": "2026-02-27T10:01:52.597Z",
+  "lastCheck": "2026-02-27T11:17:32.657Z",
   "criticalNodes": {},
   "lastAlerts": [
     {
+      "severity": "critical",
+      "type": "complete_outage",
+      "message": "COMPLETE SERVICE OUTAGE: 0/6 nodes active",
+      "details": {
+        "pendingJobs": 26,
+        "impact": "All customer jobs blocked"
+      }
+    },
+    {
+      "severity": "high",
+      "type": "critical_node_offline",
+      "message": "Critical node \"unnamed\" offline for 11 minutes",
+      "details": {
+        "nodeId": "5ef95d698bdfa57a",
+        "jobsCompleted": 134,
+        "capabilities": [
+          "transcription"
+        ],
+        "owner": "unknown",
+        "lastSeen": "2026-02-27 11:06:15"
+      }
+    },
+    {
       "severity": "high",
       "type": "capability_gap",
-      "message": "Critical capability \"ffmpeg\" has 0/3 active nodes",
+      "message": "Critical capability \"ffmpeg\" has 0/4 active nodes",
       "details": {
         "capability": "ffmpeg",
-        "totalNodes": 3,
+        "totalNodes": 4,
         "activeNodes": 0
       }
     },
@@ -39,6 +62,16 @@
       "details": {
         "capability": "whisper",
         "totalNodes": 2,
+        "activeNodes": 0
+      }
+    },
+    {
+      "severity": "high",
+      "type": "capability_gap",
+      "message": "Critical capability \"transcription\" has 0/1 active nodes",
+      "details": {
+        "capability": "transcription",
+        "totalNodes": 1,
         "activeNodes": 0
       }
     },
@@ -83,21 +116,41 @@
       }
     },
     {
+      "severity": "high",
+      "type": "capability_gap",
+      "message": "Critical capability \"test\" has 0/2 active nodes",
+      "details": {
+        "capability": "test",
+        "totalNodes": 2,
+        "activeNodes": 0
+      }
+    },
+    {
+      "severity": "high",
+      "type": "capability_gap",
+      "message": "Critical capability \"TEST_MODE\" has 0/1 active nodes",
+      "details": {
+        "capability": "TEST_MODE",
+        "totalNodes": 1,
+        "activeNodes": 0
+      }
+    },
+    {
       "severity": "medium",
       "type": "job_backlog",
-      "message": "Job backlog: 103 pending jobs",
+      "message": "Job backlog: 26 pending jobs",
       "details": {
-        "pendingJobs": 103,
-        "activeNodes": 1,
-        "jobsPerNode": 103
+        "pendingJobs": 26,
+        "activeNodes": 0,
+        "jobsPerNode": "infinite"
       }
     }
   ],
   "nodeStates": {
     "5ef95d698bdfa57a": {
-      "status": "active",
-      "lastSeen": 1772186315365,
-      "jobsCompleted": 130,
+      "status": "recently_disconnected",
+      "lastSeen": 1772190375440,
+      "jobsCompleted": 134,
       "capabilities": [
         "transcription"
       ]
@@ -139,6 +192,24 @@
     "5363c6e50c68a5d1": {
       "status": "recently_disconnected",
       "lastSeen": 1772184072331,
+      "jobsCompleted": 0,
+      "capabilities": [
+        "test"
+      ]
+    },
+    "4a5cde9ebc1a473a": {
+      "status": "recently_disconnected",
+      "lastSeen": 1772188823952,
+      "jobsCompleted": 0,
+      "capabilities": [
+        "ffmpeg",
+        "TEST_MODE",
+        "test"
+      ]
+    },
+    "9e9fc38f9a5d4b15": {
+      "status": "recently_disconnected",
+      "lastSeen": 1772188516666,
       "jobsCompleted": 0,
       "capabilities": [
         "test"

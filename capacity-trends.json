@@ -14,6 +14,51 @@
         "pdfExtract": true,
         "transcription": false
       }
+    },
+    {
+      "timestamp": 1772187620970,
+      "totalPendingJobs": 115,
+      "activeNodes": 1,
+      "jobBreakdown": {
+        "ocr": 52,
+        "pdfExtract": 52,
+        "transcribe": 11
+      },
+      "blockedServices": {
+        "ocr": true,
+        "pdfExtract": true,
+        "transcription": true
+      }
+    },
+    {
+      "timestamp": 1772187780364,
+      "totalPendingJobs": 126,
+      "activeNodes": 1,
+      "jobBreakdown": {
+        "ocr": 53,
+        "pdfExtract": 53,
+        "transcribe": 20
+      },
+      "blockedServices": {
+        "ocr": true,
+        "pdfExtract": true,
+        "transcription": false
+      }
+    },
+    {
+      "timestamp": 1772190992127,
+      "totalPendingJobs": 26,
+      "activeNodes": 1,
+      "jobBreakdown": {
+        "ocr": 8,
+        "pdfExtract": 8,
+        "transcribe": 10
+      },
+      "blockedServices": {
+        "ocr": true,
+        "pdfExtract": true,
+        "transcription": true
+      }
     }
   ]
 }

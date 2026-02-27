@@ -1,92 +1,154 @@
 #!/usr/bin/env node
 
-/**
- * Cleanup Test Jobs - Remove test/example jobs from IC Mesh queue
- * Safely removes jobs with test URLs or example content to reduce queue pollution
- */
-
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'mesh.db');
+const DB_PATH = path.join(__dirname, '..', 'data', 'mesh.db');
 
-function cleanupTestJobs() {
-    console.log('🧹 IC Mesh Test Job Cleanup');
-    console.log('══════════════════════════════════════');
-    
-    const db = new Database(DB_PATH, { readonly: false });
-    
-    try {
-        // First, analyze what we're dealing with
-        console.log('📊 Analyzing test jobs...');
+class TestJobCleaner {
+    constructor() {
+        this.db = new Database(DB_PATH);
         
-        const testJobs = db.prepare(`
-            SELECT jobId, type, status, payload, createdAt 
-            FROM jobs 
-            WHERE payload LIKE '%test%' OR payload LIKE '%example%' 
-            ORDER BY createdAt DESC
-        `).all();
-        
-        console.log(`Found ${testJobs.length} jobs with test/example content`);
-        
-        // Group by status for reporting
-        const byStatus = {};
-        const testUrls = [];
-        
-        for (const job of testJobs) {
-            byStatus[job.status] = (byStatus[job.status] || 0) + 1;
+        this.statements = {
+            findTestJobs: this.db.prepare(`
+                SELECT jobId, type, payload, requirements, status, createdAt
+                FROM jobs 
+                WHERE 
+                    JSON_EXTRACT(requirements, '$.capability') = 'TEST_MODE'
+                    OR payload LIKE '%example.com%'
+                    OR payload LIKE '%test%'
+                    OR type = 'test'
+                ORDER BY createdAt DESC
+            `),
             
-            try {
-                const payload = JSON.parse(job.payload);
-                if (payload.url && (payload.url.includes('test') || payload.url.includes('example'))) {
-                    testUrls.push(job.jobId);
+            deleteJob: this.db.prepare(`
+                DELETE FROM jobs WHERE jobId = ?
+            `),
+            
+            countJobs: this.db.prepare(`
+                SELECT status, COUNT(*) as count FROM jobs GROUP BY status
+            `)
+        };
+    }
+
+    async cleanTestJobs(options = {}) {
+        const { dryRun = false, verbose = true } = options;
+        
+        if (verbose) {
+            console.log('🧹 IC Mesh Test Job Cleanup');
+            console.log('═'.repeat(40));
+            console.log(`Mode: ${dryRun ? 'DRY RUN' : 'LIVE CLEANUP'}`);
+            console.log('');
+        }
+
+        // Get current job counts
+        const beforeCounts = this.statements.countJobs.all();
+        if (verbose) {
+            console.log('📊 Current Job Status:');
+            for (const row of beforeCounts) {
+                console.log(`   ${row.status}: ${row.count} jobs`);
+            }
+            console.log('');
+        }
+
+        // Find test jobs
+        const testJobs = this.statements.findTestJobs.all();
+        
+        if (testJobs.length === 0) {
+            if (verbose) {
+                console.log('✅ No test jobs found - queue is clean!');
+            }
+            this.db.close();
+            return { cleaned: 0, beforeCounts, afterCounts: beforeCounts };
+        }
+
+        if (verbose) {
+            console.log(`🎯 Found ${testJobs.length} test jobs to clean:`);
+            for (const job of testJobs) {
+                const age = Math.round((Date.now() - job.createdAt) / 1000 / 60);
+                const payloadPreview = job.payload.substring(0, 50) + (job.payload.length > 50 ? '...' : '');
+                const requirements = JSON.parse(job.requirements);
+                console.log(`   ${job.jobId.substring(0, 8)}... ${job.type.padEnd(12)} ${job.status.padEnd(9)} (${age}m old)`);
+                if (requirements.capability) {
+                    console.log(`     Requires: ${requirements.capability}`);
                 }
-            } catch (e) {
-                // Skip unparseable payloads
+                if (payloadPreview.includes('example.com') || payloadPreview.includes('test')) {
+                    console.log(`     Payload: ${payloadPreview}`);
+                }
+            }
+            console.log('');
+        }
+
+        if (!dryRun) {
+            // Delete test jobs
+            let cleaned = 0;
+            for (const job of testJobs) {
+                try {
+                    this.statements.deleteJob.run(job.jobId);
+                    cleaned++;
+                    if (verbose) {
+                        console.log(`   🗑️  Deleted ${job.jobId.substring(0, 8)}... (${job.type})`);
+                    }
+                } catch (error) {
+                    console.error(`   ❌ Failed to delete ${job.jobId}: ${error.message}`);
+                }
+            }
+            
+            if (verbose) {
+                console.log('');
+                console.log(`✅ Cleanup complete: ${cleaned} test jobs removed`);
+                console.log('');
+            }
+        } else {
+            if (verbose) {
+                console.log('🔍 DRY RUN: Would delete these jobs in live mode');
+                console.log('   Run without --dry-run to actually clean');
+                console.log('');
             }
         }
-        
-        console.log('\n📋 Jobs by status:');
-        for (const [status, count] of Object.entries(byStatus)) {
-            console.log(`   ${status}: ${count}`);
+
+        // Get updated counts
+        const afterCounts = this.statements.countJobs.all();
+        if (verbose && !dryRun) {
+            console.log('📊 Updated Job Status:');
+            for (const row of afterCounts) {
+                console.log(`   ${row.status}: ${row.count} jobs`);
+            }
         }
-        
-        console.log(`\n🎯 Jobs with test/example URLs: ${testUrls.length}`);
-        
-        // Ask for confirmation before cleanup
-        if (process.argv.includes('--dry-run')) {
-            console.log('\n✅ Dry run complete. Use --confirm to actually remove test jobs.');
-            return;
-        }
-        
-        if (!process.argv.includes('--confirm')) {
-            console.log('\n⚠️  Add --confirm to actually remove test jobs, or --dry-run to preview');
-            return;
-        }
-        
-        // Remove jobs with test/example URLs (safest approach)
-        console.log('\n🗑️ Removing test jobs...');
-        
-        const removeResult = db.prepare(`
-            DELETE FROM jobs 
-            WHERE payload LIKE '%test%' OR payload LIKE '%example%'
-        `).run();
-        
-        console.log(`✅ Removed ${removeResult.changes} test jobs`);
-        
-        // Show updated queue status
-        const remaining = db.prepare('SELECT COUNT(*) as count FROM jobs WHERE status = "pending"').get();
-        console.log(`📊 Remaining pending jobs: ${remaining.count}`);
-        
-    } catch (error) {
-        console.error('❌ Error during cleanup:', error);
-    } finally {
-        db.close();
+
+        this.db.close();
+        return { 
+            cleaned: dryRun ? 0 : testJobs.length, 
+            found: testJobs.length,
+            beforeCounts, 
+            afterCounts: dryRun ? beforeCounts : afterCounts 
+        };
     }
 }
 
+// CLI mode
 if (require.main === module) {
-    cleanupTestJobs();
+    const args = process.argv.slice(2);
+    const dryRun = args.includes('--dry-run') || args.includes('-n');
+    const quiet = args.includes('--quiet') || args.includes('-q');
+    
+    const cleaner = new TestJobCleaner();
+    
+    cleaner.cleanTestJobs({ dryRun, verbose: !quiet })
+        .then(result => {
+            if (result.cleaned > 0) {
+                process.exit(0);
+            } else if (result.found > 0 && dryRun) {
+                console.log('Run without --dry-run to clean test jobs');
+                process.exit(1);
+            } else {
+                process.exit(0);
+            }
+        })
+        .catch(err => {
+            console.error('❌ Cleanup failed:', err);
+            process.exit(1);
+        });
 }
 
-module.exports = { cleanupTestJobs };
+module.exports = TestJobCleaner;
