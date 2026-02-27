@@ -1,0 +1,12 @@
+[
+  {
+    "type": "LONG_OFFLINE",
+    "node": "frigg",
+    "message": "Node offline for 8 days - consider reaching out to operator"
+  },
+  {
+    "type": "LONG_OFFLINE",
+    "node": "frigg",
+    "message": "Node offline for 8 days - consider reaching out to operator"
+  }
+]

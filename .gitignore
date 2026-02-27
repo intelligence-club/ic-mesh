@@ -5,6 +5,10 @@ data/
 .node-id
 node-config.json
 
+# Runtime monitoring state
+critical-node-alerts.json
+health-state.json
+
 # SQLite temporary files
 mesh.db-shm
 mesh.db-wal
