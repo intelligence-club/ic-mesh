@@ -480,6 +480,105 @@ Tests cover: status, node registration, job lifecycle, WebSocket, error handling
 - 📖 [JOIN.md](JOIN.md) — Full setup guide
 - 📐 [PROTOCOL.md](PROTOCOL.md) — Protocol spec
 
+## 🔧 Operations & Monitoring
+
+IC Mesh includes a comprehensive monitoring and diagnostic toolkit for operators, developers, and system administrators.
+
+### Development Environment Setup
+
+```bash
+# One-time setup - ensures all tools work out of the box
+./scripts/setup-dev-environment.sh
+
+# Installs dependencies, configures environment, tests all tools
+# Safe to run multiple times, provides comprehensive setup validation
+```
+
+### Unified Monitoring Dashboard
+
+**Single interface for complete system visibility:**
+
+```bash
+# Real-time dashboard (refreshes every 5 seconds)
+./scripts/unified-monitoring-dashboard.sh --watch
+
+# One-time status check
+./scripts/unified-monitoring-dashboard.sh
+
+# JSON output for scripts/automation
+./scripts/unified-monitoring-dashboard.sh --json
+```
+
+**Dashboard sections:**
+- 🌐 **Service Status** - API health, node count, job queue
+- ⚡ **Capacity Analysis** - Node capabilities and alerts  
+- 🚨 **Recent Alerts** - Latest monitoring events
+- 💻 **System Health** - Resource usage and database status
+- 🔧 **Quick Actions** - Common management commands
+
+### Service Outage Management
+
+**Complete outage response toolkit:**
+
+```bash
+# Monitor for service recovery during outages
+./scripts/outage-recovery-detector.sh --monitor
+
+# Check current outage status
+./scripts/outage-recovery-detector.sh --status
+
+# Generate status updates for Discord/social media
+./scripts/outage-status-generator.sh discord
+
+# Post-recovery verification checklist
+./scripts/post-outage-recovery-checklist.sh
+```
+
+**Response playbook:** [OUTAGE-RESPONSE-PLAYBOOK.md](OUTAGE-RESPONSE-PLAYBOOK.md) provides step-by-step recovery procedures, contact templates, and lessons learned.
+
+### Advanced Monitoring
+
+**Real-time capacity analysis:**
+```bash
+# Comprehensive network health check
+node real-time-capacity-monitor.js --check
+
+# Continuous monitoring with alerts
+node real-time-capacity-monitor.js --monitor
+```
+
+**Health monitoring:**
+```bash
+npm run health              # Service health check
+npm run health:realtime     # Continuous real-time monitoring  
+npm run health:regenerative # Biological health metrics
+```
+
+**Performance monitoring:**
+```bash
+npm run perf:analyze        # Performance analysis
+npm run perf:report         # Generate performance report
+npm run diagnostics:full    # Complete system diagnostics
+```
+
+### Key Features
+
+- 🚨 **Automatic outage detection** with node reconnection monitoring
+- 📊 **Real-time capacity tracking** with capability gap analysis  
+- 🔄 **Recovery verification** with comprehensive health scoring
+- 📱 **Status generation** for human and programmatic consumption
+- 🛠️ **Integrated tooling** that works without dependencies
+- 📖 **Complete playbooks** for incident response and recovery
+
+### Monitoring Integration
+
+All tools integrate seamlessly:
+- **Lightweight shell scripts** work without Node.js dependencies
+- **JSON output modes** enable automation and alerting integration
+- **Continuous monitoring** with configurable refresh intervals
+- **Alert logging** with structured event tracking
+- **Health scoring** provides quantitative service assessment
+
 ## 🌱 Regenerative Computing
 
 The Intelligence Club Mesh isn't just distributed computing—it's **regenerative** computing. Like healthy soil that creates abundance while healing the ecosystem, our mesh network operates on principles that strengthen the whole while serving each part.
