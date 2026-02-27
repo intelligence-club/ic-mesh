@@ -1,5 +1,5 @@
 {
-  "lastCheck": "2026-02-27T11:17:32.657Z",
+  "lastCheck": "2026-02-27T12:47:14.100Z",
   "criticalNodes": {},
   "lastAlerts": [
     {
@@ -7,22 +7,8 @@
       "type": "complete_outage",
       "message": "COMPLETE SERVICE OUTAGE: 0/6 nodes active",
       "details": {
-        "pendingJobs": 26,
+        "pendingJobs": 48,
         "impact": "All customer jobs blocked"
-      }
-    },
-    {
-      "severity": "high",
-      "type": "critical_node_offline",
-      "message": "Critical node \"unnamed\" offline for 11 minutes",
-      "details": {
-        "nodeId": "5ef95d698bdfa57a",
-        "jobsCompleted": 134,
-        "capabilities": [
-          "transcription"
-        ],
-        "owner": "unknown",
-        "lastSeen": "2026-02-27 11:06:15"
       }
     },
     {
@@ -138,9 +124,9 @@
     {
       "severity": "medium",
       "type": "job_backlog",
-      "message": "Job backlog: 26 pending jobs",
+      "message": "Job backlog: 48 pending jobs",
       "details": {
-        "pendingJobs": 26,
+        "pendingJobs": 48,
         "activeNodes": 0,
         "jobsPerNode": "infinite"
       }
@@ -149,8 +135,8 @@
   "nodeStates": {
     "5ef95d698bdfa57a": {
       "status": "recently_disconnected",
-      "lastSeen": 1772190375440,
-      "jobsCompleted": 134,
+      "lastSeen": 1772195445132,
+      "jobsCompleted": 140,
       "capabilities": [
         "transcription"
       ]
@@ -198,7 +184,7 @@
       ]
     },
     "4a5cde9ebc1a473a": {
-      "status": "recently_disconnected",
+      "status": "daily_churn",
       "lastSeen": 1772188823952,
       "jobsCompleted": 0,
       "capabilities": [
@@ -208,7 +194,7 @@
       ]
     },
     "9e9fc38f9a5d4b15": {
-      "status": "recently_disconnected",
+      "status": "daily_churn",
       "lastSeen": 1772188516666,
       "jobsCompleted": 0,
       "capabilities": [
