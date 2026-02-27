@@ -51,7 +51,7 @@ cd ic-mesh
 **Option A: Environment variables**
 
 ```bash
-export IC_MESH_SERVER="http://moilol.com:8333"
+export IC_MESH_SERVER="https://moilol.com:8333"
 export IC_NODE_NAME="your-node-name"      # e.g. "hilo-mac-mini"
 export IC_NODE_OWNER="your-name"           # e.g. "drake"
 export IC_NODE_REGION="your-region"        # e.g. "hawaii", "nyc", "berlin"
@@ -67,7 +67,7 @@ cp node-config.json.sample node-config.json
 **Option C: .env file**
 
 ```
-IC_MESH_SERVER=http://moilol.com:8333
+IC_MESH_SERVER=https://moilol.com:8333
 IC_NODE_NAME=hilo-mac-mini
 IC_NODE_OWNER=drake
 IC_NODE_REGION=hawaii

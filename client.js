@@ -886,6 +886,38 @@ function connectWebSocket() {
   });
 }
 
+async function claimJob(jobId) {
+  if (jobRunning) return false;
+  
+  console.log(`◉ Claiming job: ${jobId}`);
+  const claimed = await meshFetch(`/jobs/${jobId}/claim`, {
+    method: 'POST', body: JSON.stringify({ nodeId })
+  });
+  
+  if (!claimed?.ok) { 
+    console.log(`  ✗ Claim failed`); 
+    return false; 
+  }
+  
+  // Get full job details and execute
+  const jobResult = await meshFetch(`/jobs/${jobId}`);
+  if (jobResult?.ok && jobResult.data) {
+    const job = jobResult.data;
+    console.log(`  ✓ Claimed (timeout: ${Math.round(getJobTimeout(job)/1000)}s)`);
+    jobRunning = true;
+    currentJobId = job.jobId;
+    
+    // Execute job in background
+    executeJob(job).catch(err => {
+      console.error(`Job execution error: ${err.message}`);
+      jobRunning = false;
+    });
+    return true;
+  }
+  
+  return false;
+}
+
 function handleWebSocketMessage(msg) {
   switch (msg.type) {
     case 'job.dispatch':
