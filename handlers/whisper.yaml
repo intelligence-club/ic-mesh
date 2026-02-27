@@ -1,4 +1,4 @@
-# Whisper — Speech-to-text transcription
+# Whisper — Speech-to-text transcription (with auto ffmpeg conversion)
 capability: whisper
 namespace: whisper.cpp
 aliases: [transcription, transcribe, stt]
@@ -18,9 +18,8 @@ models:
   parse_name: "ggml-(?<name>.+)\\.bin"
 
 invoke:
-  cmd: "whisper-cli -m {model_path} -f {input} --no-timestamps -t {threads} -otxt"
-  output: file
-  output_file: "{input}.txt"
+  cmd: "ffmpeg -y -i {input} -ar 16000 -ac 1 {output_dir}/audio.wav -loglevel error && whisper-cli -m {model_path} -f {output_dir}/audio.wav --no-timestamps -t {threads} -otxt -of {output_dir}/output 2>&1 && cat {output_dir}/output.txt"
+  output: stdout
   result_type: text
 
 resources:
