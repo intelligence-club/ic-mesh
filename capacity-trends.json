@@ -59,6 +59,21 @@
         "pdfExtract": true,
         "transcription": true
       }
+    },
+    {
+      "timestamp": 1772197382320,
+      "totalPendingJobs": 71,
+      "activeNodes": 1,
+      "jobBreakdown": {
+        "ocr": 16,
+        "pdfExtract": 16,
+        "transcribe": 39
+      },
+      "blockedServices": {
+        "ocr": true,
+        "pdfExtract": true,
+        "transcription": false
+      }
     }
   ]
 }
