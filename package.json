@@ -66,7 +66,11 @@
     "status:watch": "node unified-status-monitor.js --watch",
     "status:json": "node unified-status-monitor.js --json",
     "validate": "node scripts/onboarding-validator.js",
-    "optimize": "node scripts/user-experience-optimizer.js"
+    "optimize": "node scripts/user-experience-optimizer.js",
+    "logging:analyze": "node scripts/logging-migration.js --analyze",
+    "logging:migrate": "node scripts/logging-migration.js --migrate --dry-run",
+    "logging:report": "node scripts/logging-migration.js --report",
+    "logging:demo": "node demo-logging-example.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
