@@ -19,7 +19,7 @@ const sqlite3 = require('sqlite3').verbose();
 class SystemReadinessCheck {
     constructor() {
         this.meshServer = 'http://localhost:8333';
-        this.dbPath = './mesh.db';
+        this.dbPath = './data/mesh.db';
         this.results = {
             overall: 'unknown',
             checks: [],

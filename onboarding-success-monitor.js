@@ -9,7 +9,7 @@ const path = require('path');
 
 class OnboardingMonitor {
   constructor() {
-    this.db = new sqlite3.Database('./mesh.db', sqlite3.OPEN_READONLY);
+    this.db = new sqlite3.Database('./data/mesh.db', sqlite3.OPEN_READONLY);
     this.recentRegistrations = new Map();
     this.monitoringActive = false;
   }

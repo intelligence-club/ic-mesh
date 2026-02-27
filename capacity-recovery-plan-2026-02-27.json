@@ -1,0 +1,164 @@
+{
+  "timestamp": "2026-02-27T16:13:25.819Z",
+  "summary": {
+    "pendingJobs": 3,
+    "totalNodes": 6,
+    "activeNodes": 0,
+    "capabilityGaps": [
+      [
+        "TEST_MODE",
+        {
+          "pendingJobs": 1,
+          "hasCapableNodes": true,
+          "capableNodeCount": 1
+        }
+      ],
+      [
+        "ocr",
+        {
+          "pendingJobs": 1,
+          "hasCapableNodes": false,
+          "capableNodeCount": 0
+        }
+      ],
+      [
+        "pdf-extract",
+        {
+          "pendingJobs": 1,
+          "hasCapableNodes": false,
+          "capableNodeCount": 0
+        }
+      ]
+    ],
+    "reconnectionOpportunities": 1
+  },
+  "actions": [
+    {
+      "type": "recruit",
+      "priority": "medium",
+      "capability": "ocr",
+      "pendingJobs": 1,
+      "recruitmentMessage": "Looking for nodes with OCR (Optical Character Recognition) - extract text from images capability! We currently have 1 jobs pending that need this capability. Great opportunity to earn rewards while helping the network.",
+      "suggestedChannels": [
+        "discord",
+        "reddit",
+        "direct-outreach"
+      ]
+    },
+    {
+      "type": "recruit",
+      "priority": "medium",
+      "capability": "pdf-extract",
+      "pendingJobs": 1,
+      "recruitmentMessage": "Looking for nodes with PDF text extraction - extract text from PDF documents capability! We currently have 1 jobs pending that need this capability. Great opportunity to earn rewards while helping the network.",
+      "suggestedChannels": [
+        "discord",
+        "reddit",
+        "direct-outreach"
+      ]
+    },
+    {
+      "type": "expand",
+      "priority": "low",
+      "reason": "No active nodes in network",
+      "suggestion": "General recruitment campaign for any node types"
+    }
+  ],
+  "detailedAnalysis": {
+    "pendingJobsBreakdown": [
+      {
+        "jobId": "8ad736b7...",
+        "type": "transcribe",
+        "requirements": {
+          "capability": "TEST_MODE"
+        },
+        "createdAt": 1772208176714
+      },
+      {
+        "jobId": "f22b76d0...",
+        "type": "ocr",
+        "requirements": {
+          "capability": "ocr"
+        },
+        "createdAt": 1772208183116
+      },
+      {
+        "jobId": "b1f02352...",
+        "type": "pdf-extract",
+        "requirements": {
+          "capability": "pdf-extract"
+        },
+        "createdAt": 1772208183221
+      }
+    ],
+    "nodeStatus": [
+      {
+        "nodeId": "5ef95d69...",
+        "name": "unnamed",
+        "capabilities": [
+          "transcription",
+          "transcribe"
+        ],
+        "lastSeenMinutes": 10,
+        "active": false
+      },
+      {
+        "nodeId": "b190a5f6...",
+        "name": "Health Check Node",
+        "capabilities": [
+          "test"
+        ],
+        "lastSeenMinutes": 24,
+        "active": false
+      },
+      {
+        "nodeId": "fcecb481...",
+        "name": "frigg",
+        "capabilities": [
+          "ollama",
+          "whisper",
+          "ffmpeg",
+          "tesseract",
+          "gpu-metal",
+          "transcribe",
+          "generate"
+        ],
+        "lastSeenMinutes": 9597,
+        "active": false
+      },
+      {
+        "nodeId": "a47cd29a...",
+        "name": "frigg",
+        "capabilities": [
+          "ffmpeg",
+          "gpu-metal",
+          "stable-diffusion"
+        ],
+        "lastSeenMinutes": 9847,
+        "active": false
+      },
+      {
+        "nodeId": "9b6a3b58...",
+        "name": "miniclaw",
+        "capabilities": [
+          "whisper",
+          "ffmpeg",
+          "gpu-metal"
+        ],
+        "lastSeenMinutes": 9857,
+        "active": false
+      },
+      {
+        "nodeId": "4a5cde9e...",
+        "name": "test-processor",
+        "capabilities": [
+          "ffmpeg",
+          "TEST_MODE",
+          "test"
+        ],
+        "lastSeenMinutes": 10072,
+        "active": false
+      }
+    ]
+  }
+}

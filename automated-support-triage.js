@@ -12,7 +12,7 @@ const path = require('path');
 const fs = require('fs');
 
 class AutomatedSupportTriage {
-    constructor(dbPath = './mesh.db') {
+    constructor(dbPath = './data/mesh.db') {
         try {
             this.db = new Database(dbPath, { readonly: false });
             this.setupSchema();

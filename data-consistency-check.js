@@ -17,7 +17,7 @@ const fs = require('fs');
 
 class DataConsistencyChecker {
     constructor() {
-        this.db = new sqlite3.Database('mesh.db');
+        this.db = new sqlite3.Database('data/mesh.db');
         this.apiBase = 'http://localhost:8333';
         this.results = {
             timestamp: new Date().toISOString(),
@@ -35,7 +35,7 @@ class DataConsistencyChecker {
                 pendingJobs: "SELECT COUNT(*) as count FROM jobs WHERE status = 'pending'",
                 completedJobs: "SELECT COUNT(*) as count FROM jobs WHERE status = 'completed'",
                 totalJobs: "SELECT COUNT(*) as count FROM jobs",
-                activeNodes: "SELECT COUNT(*) as count FROM nodes WHERE lastHeartbeat > datetime('now', '-5 minutes')",
+                activeNodes: "SELECT COUNT(*) as count FROM nodes WHERE lastSeen > (strftime('%s', 'now') - 300) * 1000",
                 totalNodes: "SELECT COUNT(*) as count FROM nodes",
                 recentJobs: "SELECT * FROM jobs ORDER BY createdAt DESC LIMIT 5"
             };
