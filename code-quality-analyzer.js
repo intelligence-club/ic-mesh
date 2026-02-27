@@ -136,20 +136,28 @@ class CodeQualityAnalyzer {
         score: 100
       };
       
-      // Security analysis
-      this.securityPatterns.forEach(pattern => {
-        const matches = [...content.matchAll(new RegExp(pattern.pattern, 'g'))];
-        matches.forEach(match => {
-          analysis.issues.push({
-            type: 'security',
-            severity: pattern.severity,
-            message: pattern.message,
-            line: this.getLineNumber(content, match.index),
-            context: this.getContext(lines, this.getLineNumber(content, match.index))
+      // Security analysis (exclude documentation and comments)
+      if (!this.isDocumentationFile(relativePath)) {
+        this.securityPatterns.forEach(pattern => {
+          const matches = [...content.matchAll(new RegExp(pattern.pattern, 'g'))];
+          matches.forEach(match => {
+            const lineNum = this.getLineNumber(content, match.index);
+            const contextLine = lines[lineNum - 1] || '';
+            
+            // Skip if the match is in a comment or documentation context
+            if (!this.isInComment(contextLine) && !this.isDocumentationContext(contextLine, pattern.pattern)) {
+              analysis.issues.push({
+                type: 'security',
+                severity: pattern.severity,
+                message: pattern.message,
+                line: lineNum,
+                context: this.getContext(lines, lineNum)
+              });
+              this.results.security.issues.push({ file: relativePath, ...analysis.issues[analysis.issues.length - 1] });
+            }
           });
-          this.results.security.issues.push({ file: relativePath, ...analysis.issues[analysis.issues.length - 1] });
         });
-      });
+      }
       
       // Performance analysis
       this.performancePatterns.forEach(pattern => {
@@ -501,6 +509,43 @@ class CodeQualityAnalyzer {
 
   shouldInclude(fileName) {
     return this.options.includeExtensions.some(ext => fileName.endsWith(ext));
+  }
+
+  isDocumentationFile(filePath) {
+    const docExtensions = ['.md', '.txt', '.rst', '.adoc'];
+    const docPaths = ['README', 'CHANGELOG', 'LICENSE', 'CONTRIBUTING'];
+    
+    // Exclude the code quality analyzer from analyzing itself (to avoid false positives from patterns)
+    if (filePath.endsWith('code-quality-analyzer.js')) return true;
+    
+    return docExtensions.some(ext => filePath.toLowerCase().endsWith(ext)) ||
+           docPaths.some(path => filePath.toUpperCase().includes(path));
+  }
+
+  isInComment(line) {
+    const trimmed = line.trim();
+    return trimmed.startsWith('//') || 
+           trimmed.startsWith('/*') || 
+           trimmed.startsWith('*') ||
+           trimmed.startsWith('#') ||
+           (trimmed.startsWith('-') && trimmed.includes('eval()')); // Markdown list with eval() mention
+  }
+
+  isDocumentationContext(line, pattern) {
+    const lowerLine = line.toLowerCase();
+    const patternStr = pattern.toString();
+    
+    // If checking for eval() and the line contains documentation keywords
+    if (patternStr.includes('eval') && 
+        (lowerLine.includes('no eval') || 
+         lowerLine.includes('avoid eval') || 
+         lowerLine.includes('prevent eval') ||
+         lowerLine.includes('documentation') ||
+         lowerLine.includes('example'))) {
+      return true;
+    }
+    
+    return false;
   }
 }
 
