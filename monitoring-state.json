@@ -1,14 +1,19 @@
 {
-  "lastCheck": "2026-02-27T05:34:52.326Z",
+  "lastCheck": "2026-02-27T05:52:00.410Z",
   "criticalNodes": {},
   "lastAlerts": [
     {
-      "severity": "critical",
-      "type": "complete_outage",
-      "message": "COMPLETE SERVICE OUTAGE: 0/4 nodes active",
+      "severity": "high",
+      "type": "critical_node_offline",
+      "message": "Critical node \"unnamed\" offline for 14 minutes",
       "details": {
-        "pendingJobs": 41,
-        "impact": "All customer jobs blocked"
+        "nodeId": "5ef95d698bdfa57a",
+        "jobsCompleted": 113,
+        "capabilities": [
+          "transcription"
+        ],
+        "owner": "unknown",
+        "lastSeen": "2026-02-27 05:37:22"
       }
     },
     {
@@ -64,16 +69,6 @@
     {
       "severity": "high",
       "type": "capability_gap",
-      "message": "Critical capability \"transcribe\" has 0/2 active nodes",
-      "details": {
-        "capability": "transcribe",
-        "totalNodes": 2,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
       "message": "Critical capability \"ollama\" has 0/1 active nodes",
       "details": {
         "capability": "ollama",
@@ -94,6 +89,16 @@
     {
       "severity": "high",
       "type": "capability_gap",
+      "message": "Critical capability \"transcribe\" has 0/1 active nodes",
+      "details": {
+        "capability": "transcribe",
+        "totalNodes": 1,
+        "activeNodes": 0
+      }
+    },
+    {
+      "severity": "high",
+      "type": "capability_gap",
       "message": "Critical capability \"generate\" has 0/1 active nodes",
       "details": {
         "capability": "generate",
@@ -104,22 +109,21 @@
     {
       "severity": "medium",
       "type": "job_backlog",
-      "message": "Job backlog: 41 pending jobs",
+      "message": "Job backlog: 57 pending jobs",
       "details": {
-        "pendingJobs": 41,
-        "activeNodes": 0,
-        "jobsPerNode": "infinite"
+        "pendingJobs": 57,
+        "activeNodes": 1,
+        "jobsPerNode": 57
       }
     }
   ],
   "nodeStates": {
     "5ef95d698bdfa57a": {
       "status": "recently_disconnected",
-      "lastSeen": 1772168443096,
-      "jobsCompleted": 112,
+      "lastSeen": 1772170642899,
+      "jobsCompleted": 113,
       "capabilities": [
-        "transcription",
-        "transcribe"
+        "transcription"
       ]
     },
     "9b6a3b5841dc2890": {
@@ -154,6 +158,14 @@
         "gpu-metal",
         "transcribe",
         "generate"
+      ]
+    },
+    "5363c6e50c68a5d1": {
+      "status": "active",
+      "lastSeen": 1772171331964,
+      "jobsCompleted": 0,
+      "capabilities": [
+        "test"
       ]
     }
   }

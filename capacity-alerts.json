@@ -361,5 +361,131 @@
       "completedJobs": 61,
       "serviceAvailability": "outage"
     }
+  },
+  {
+    "timestamp": "2026-02-27T05:52:00.421Z",
+    "alerts": [
+      {
+        "severity": "high",
+        "type": "critical_node_offline",
+        "message": "Critical node \"unnamed\" offline for 14 minutes",
+        "details": {
+          "nodeId": "5ef95d698bdfa57a",
+          "jobsCompleted": 113,
+          "capabilities": [
+            "transcription"
+          ],
+          "owner": "unknown",
+          "lastSeen": "2026-02-27 05:37:22"
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"ffmpeg\" has 0/3 active nodes",
+        "details": {
+          "capability": "ffmpeg",
+          "totalNodes": 3,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"gpu-metal\" has 0/3 active nodes",
+        "details": {
+          "capability": "gpu-metal",
+          "totalNodes": 3,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"stable-diffusion\" has 0/1 active nodes",
+        "details": {
+          "capability": "stable-diffusion",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"whisper\" has 0/2 active nodes",
+        "details": {
+          "capability": "whisper",
+          "totalNodes": 2,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"transcription\" has 0/1 active nodes",
+        "details": {
+          "capability": "transcription",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"ollama\" has 0/1 active nodes",
+        "details": {
+          "capability": "ollama",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"tesseract\" has 0/1 active nodes",
+        "details": {
+          "capability": "tesseract",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"transcribe\" has 0/1 active nodes",
+        "details": {
+          "capability": "transcribe",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"generate\" has 0/1 active nodes",
+        "details": {
+          "capability": "generate",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "medium",
+        "type": "job_backlog",
+        "message": "Job backlog: 57 pending jobs",
+        "details": {
+          "pendingJobs": 57,
+          "activeNodes": 1,
+          "jobsPerNode": 57
+        }
+      }
+    ],
+    "networkState": {
+      "activeNodes": 1,
+      "totalNodes": 5,
+      "pendingJobs": 57,
+      "completedJobs": 62,
+      "serviceAvailability": "available"
+    }
   }
 ]
