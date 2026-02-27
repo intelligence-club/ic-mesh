@@ -1,5 +1,5 @@
 {
-  "lastCheck": "2026-02-27T09:33:26.023Z",
+  "lastCheck": "2026-02-27T10:01:52.597Z",
   "criticalNodes": {},
   "lastAlerts": [
     {
@@ -83,31 +83,21 @@
       }
     },
     {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"test\" has 0/1 active nodes",
-      "details": {
-        "capability": "test",
-        "totalNodes": 1,
-        "activeNodes": 0
-      }
-    },
-    {
       "severity": "medium",
       "type": "job_backlog",
-      "message": "Job backlog: 116 pending jobs",
+      "message": "Job backlog: 103 pending jobs",
       "details": {
-        "pendingJobs": 116,
+        "pendingJobs": 103,
         "activeNodes": 1,
-        "jobsPerNode": 116
+        "jobsPerNode": 103
       }
     }
   ],
   "nodeStates": {
     "5ef95d698bdfa57a": {
       "status": "active",
-      "lastSeen": 1772184764271,
-      "jobsCompleted": 128,
+      "lastSeen": 1772186315365,
+      "jobsCompleted": 130,
       "capabilities": [
         "transcription"
       ]

@@ -1,0 +1,19 @@
+{
+  "entries": [
+    {
+      "timestamp": 1772187559623,
+      "totalPendingJobs": 115,
+      "activeNodes": 1,
+      "jobBreakdown": {
+        "ocr": 52,
+        "pdfExtract": 52,
+        "transcribe": 11
+      },
+      "blockedServices": {
+        "ocr": true,
+        "pdfExtract": true,
+        "transcription": false
+      }
+    }
+  ]
+}
