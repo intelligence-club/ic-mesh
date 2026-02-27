@@ -3,7 +3,13 @@
  * Clean Test Job Pollution from IC Mesh Database
  * 
  * PURPOSE: Remove test jobs that are created by monitoring/testing scripts
- * SAFETY: Only removes jobs with test payload patterns and recent timestamps
+ * SAFETY: Only removes jobs with EXPLICIT test markers - never customer data
+ * 
+ * ⚠️ SECURITY WARNING: Do NOT use broad patterns like '%test%' or time-based deletion
+ * Customer files may legitimately contain "test" (e.g., "TestResults.pdf")
+ * Companies may have "test" in their name (e.g., "Beta Testing Corp")
+ * 
+ * FIXED 2026-02-27: Removed dangerous patterns that could delete customer jobs
  */
 
 const Database = require('better-sqlite3');
@@ -18,19 +24,21 @@ async function cleanTestPollution() {
     console.log(`Timestamp: ${new Date().toISOString()}`);
     console.log();
 
-    // Find test jobs - jobs with test-like payloads or created by testing systems
+    // Find test jobs - ONLY jobs with explicit test markers (SAFE CLEANUP)
+    // SECURITY: Only targets jobs created by actual testing systems, not customer data
     const testJobs = db.prepare(`
         SELECT jobId, type, payload, createdAt, requester
         FROM jobs 
         WHERE status = 'pending'
         AND (
             payload LIKE '%example.com%'
-            OR payload LIKE '%test%'
-            OR payload LIKE '%TEST%'
-            OR payload LIKE '%dummy%'
-            OR requester LIKE '%test%'
+            OR payload LIKE '%dummy-url%'
+            OR payload LIKE '%test-transcript%'
+            OR payload LIKE '%TESTING_PURPOSES%'
             OR requester = 'system'
-            OR (type = 'transcribe' AND createdAt > strftime('%s', 'now', '-2 hours'))
+            OR requester = 'test-runner'
+            OR requester = 'monitoring-script'
+            OR (requester = 'anonymous' AND payload LIKE '%example.com%')
         )
         ORDER BY createdAt DESC
     `).all();
@@ -40,12 +48,13 @@ async function cleanTestPollution() {
         FROM jobs 
         WHERE status = 'pending'
         AND payload NOT LIKE '%example.com%'
-        AND payload NOT LIKE '%test%'
-        AND payload NOT LIKE '%TEST%'
-        AND payload NOT LIKE '%dummy%'
-        AND requester NOT LIKE '%test%'
+        AND payload NOT LIKE '%dummy-url%'
+        AND payload NOT LIKE '%test-transcript%'
+        AND payload NOT LIKE '%TESTING_PURPOSES%'
         AND requester != 'system'
-        AND NOT (type = 'transcribe' AND createdAt > strftime('%s', 'now', '-2 hours'))
+        AND requester != 'test-runner'
+        AND requester != 'monitoring-script'
+        AND NOT (requester = 'anonymous' AND payload LIKE '%example.com%')
     `).all();
 
     console.log('📊 ANALYSIS RESULTS');
