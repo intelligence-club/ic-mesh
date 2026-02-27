@@ -244,6 +244,48 @@ class HealthChecker {
       };
     }, 1, false);
 
+    // Critical node monitoring
+    await this.check('Critical node capacity', async () => {
+      try {
+        // Check if critical node monitoring script exists
+        const monitorScript = path.join(__dirname, '..', 'notify-critical-nodes.js');
+        if (!fs.existsSync(monitorScript)) {
+          return { success: true, message: 'No critical node monitor installed' };
+        }
+        
+        // Import and run the critical node checker
+        const { checkCriticalNodes } = require('../notify-critical-nodes.js');
+        const result = await checkCriticalNodes();
+        
+        const criticalAlerts = result.alerts.filter(alert => alert.severity === 'CRITICAL');
+        const hasCapacityGaps = criticalAlerts.some(alert => 
+          alert.capabilities.includes('tesseract') || 
+          alert.capabilities.includes('transcription')
+        );
+        
+        if (criticalAlerts.length === 0) {
+          return {
+            success: true,
+            message: `All critical capabilities online (${result.summary.activeNodes}/${result.summary.totalNodes} nodes active)`,
+            summary: result.summary
+          };
+        } else {
+          const blockedCapabilities = [...new Set(criticalAlerts.flatMap(alert => alert.capabilities))];
+          return {
+            success: false,
+            message: `${criticalAlerts.length} critical nodes offline, blocking: ${blockedCapabilities.join(', ')}`,
+            alerts: criticalAlerts,
+            blockedCapabilities
+          };
+        }
+      } catch (error) {
+        return {
+          success: false,
+          message: `Monitoring error: ${error.message}`
+        };
+      }
+    }, 2, false); // Weight 2 because capacity is important, but not required for basic operation
+
     this.calculateOverallHealth();
     this.printSummary();
   }
