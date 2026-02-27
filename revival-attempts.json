@@ -99,9 +99,19 @@
         "pendingJobs": 23,
         "serviceAvailability": "available"
       }
+    },
+    {
+      "timestamp": "2026-02-27T20:40:57.807Z",
+      "messagesGenerated": 8,
+      "networkStatus": {
+        "activeNodes": 2,
+        "totalNodes": 10,
+        "pendingJobs": 25,
+        "serviceAvailability": "available"
+      }
     }
   ],
-  "lastRun": "2026-02-27T19:48:38.512Z",
+  "lastRun": "2026-02-27T20:40:57.807Z",
   "stats": {
     "totalAttempts": 0,
     "successfulRevivals": 0,
