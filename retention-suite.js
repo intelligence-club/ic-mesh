@@ -232,7 +232,7 @@ function main() {
       console.log('  intervention - Automated intervention for at-risk nodes');
       console.log('  insights     - Generate comprehensive retention insights report');
       console.log('  diagnostics  - Run system diagnostics for troubleshooting\\n');
-      console.log('🎯 Start here if you\\'re new: ./retention-suite.js setup');
+      console.log('🎯 Start here if you\'re new: ./retention-suite.js setup');
       console.log('📊 Monitor network health: ./retention-suite.js health');
       console.log('🔧 Help struggling nodes: ./retention-suite.js intervention');
       console.log('\\n💡 These tools address the 75% node churn rate through:');

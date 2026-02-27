@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-02-27T07:11:45.307Z",
+  "severity": "COMPLETE_OUTAGE",
+  "message": "COMPLETE SERVICE OUTAGE: 107 jobs pending, 0 customer-capable nodes",
+  "actions": [
+    "IMMEDIATE_OPERATOR_CONTACT",
+    "HUMAN_ESCALATION"
+  ],
+  "urgency": "IMMEDIATE_HUMAN_INTERVENTION_REQUIRED"
+}

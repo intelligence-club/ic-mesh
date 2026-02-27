@@ -207,7 +207,7 @@ async function createOperatorConfig(capabilities) {
   const config = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG, 'utf8'));
   
   // Basic operator info
-  console.log('Let\\'s set up your operator identity:');
+  console.log('Let\'s set up your operator identity:');
   
   const defaultName = `${require('os').hostname()}-${crypto.randomBytes(3).toString('hex')}`;
   const nodeName = await ask('Your node name (visible to job requesters)', defaultName);
