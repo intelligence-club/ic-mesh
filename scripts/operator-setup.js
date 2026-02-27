@@ -72,6 +72,13 @@ function ask(question, defaultValue = '') {
   });
 }
 
+// Sanitize user input to prevent command injection
+function sanitizeInput(input) {
+  if (typeof input !== 'string') return '';
+  // Remove dangerous characters that could be used for command injection
+  return input.replace(/[;&|`$()<>]/g, '').trim();
+}
+
 function runCommand(command, options = {}) {
   try {
     const output = execSync(command, { 
@@ -214,10 +221,11 @@ async function createOperatorConfig(capabilities) {
   const ownerEmail = await ask('Your email address (for payments and notifications)');
   const region = await ask('Your region/country (helps with job routing)', 'US');
   
-  // Update basic config
-  config.node.name = nodeName;
-  config.node.owner = ownerEmail;
-  config.node.region = region;
+  // Update basic config with sanitized inputs
+  config.node.name = sanitizeInput(nodeName);
+  config.node.owner = sanitizeInput(ownerEmail);
+  config.node.ownerEmail = sanitizeInput(ownerEmail); // For display purposes
+  config.node.region = sanitizeInput(region);
   config.server.url = 'https://moilol.com:8333';
   
   // Configure capabilities based on detection
@@ -240,19 +248,47 @@ async function createOperatorConfig(capabilities) {
   
   // Resource limits
   console.log('\\nResource limits (prevents overloading your machine):');
-  const maxConcurrent = await ask('Maximum concurrent jobs', '2');
-  const maxCpuUsage = await ask('Maximum CPU usage %', '80');
+  const maxConcurrentInput = await ask('Maximum concurrent jobs', '2');
+  const maxCpuUsageInput = await ask('Maximum CPU usage %', '80');
   
-  config.node.maxConcurrentJobs = parseInt(maxConcurrent);
-  config.node.maxCpuUsage = parseInt(maxCpuUsage);
+  // Validate and sanitize resource limits to prevent DOS attacks
+  const maxConcurrent = Math.min(10, Math.max(1, parseInt(sanitizeInput(maxConcurrentInput)) || 2));
+  const maxCpuUsage = Math.min(100, Math.max(10, parseInt(sanitizeInput(maxCpuUsageInput)) || 80));
   
-  // Save configuration
+  config.node.maxConcurrentJobs = maxConcurrent;
+  config.node.maxCpuUsage = maxCpuUsage;
+  
+  // Save configuration atomically to prevent corruption
   try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    const configData = JSON.stringify(config, null, 2);
+    const tempFile = CONFIG_FILE + '.tmp';
+    const backupFile = CONFIG_FILE + '.backup';
+    
+    // Create backup if config exists
+    if (fs.existsSync(CONFIG_FILE)) {
+      fs.copyFileSync(CONFIG_FILE, backupFile);
+    }
+    
+    // Write to temp file first
+    fs.writeFileSync(tempFile, configData);
+    
+    // Atomic move (rename is atomic on most filesystems)
+    fs.renameSync(tempFile, CONFIG_FILE);
+    
     success(`Configuration saved to node-config.json`);
     return true;
   } catch (err) {
     error(`Failed to save configuration: ${err.message}`);
+    // Restore from backup if available
+    const backupFile = CONFIG_FILE + '.backup';
+    if (fs.existsSync(backupFile)) {
+      try {
+        fs.copyFileSync(backupFile, CONFIG_FILE);
+        warn('Configuration restored from backup');
+      } catch (restoreErr) {
+        error(`Failed to restore from backup: ${restoreErr.message}`);
+      }
+    }
     return false;
   }
 }
@@ -268,7 +304,7 @@ async function setupStripeConnect() {
   if (setupNow.toLowerCase() === 'y') {
     console.log('\\n📖 Payment Setup Instructions:');
     console.log('1. 🌐 Visit: https://moilol.com/account');
-    console.log('2. 📧 Enter the email you provided:', colors.yellow(process.env.IC_NODE_OWNER || 'your-email'));
+    console.log('2. 📧 Enter the email you provided:', colors.yellow(config.node.ownerEmail || 'your-email'));
     console.log('3. ✅ Complete the Stripe Connect onboarding');
     console.log('4. 💰 Start receiving payments!');
     
@@ -322,13 +358,13 @@ async function startNode() {
     success('Dependencies installed');
   }
   
-  // Start the client
+  // Start the client (credentials now in config file, not env vars)
   const client = spawn('node', ['client.js'], {
     cwd: PROJECT_ROOT,
     stdio: 'inherit',
     env: {
-      ...process.env,
-      IC_NODE_OWNER: process.env.IC_NODE_OWNER || 'setup-user'
+      ...process.env
+      // Removed IC_NODE_OWNER - using config file for security
     }
   });
   
