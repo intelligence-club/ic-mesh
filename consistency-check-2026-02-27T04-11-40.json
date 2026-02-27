@@ -1,0 +1,174 @@
+{
+  "timestamp": "2026-02-27T04:11:40.528Z",
+  "sources": {
+    "database": {
+      "completedJobs": 0,
+      "totalNodes": 0,
+      "recentJobs": [],
+      "activeNodes": 0,
+      "totalJobs": 0,
+      "pendingJobs": 0
+    },
+    "api": {
+      "status": {
+        "error": "fetch is not a function"
+      },
+      "nodes": {
+        "error": "fetch is not a function"
+      },
+      "availableJobs": {
+        "error": "fetch is not a function"
+      }
+    },
+    "analysisTools": {
+      "node-revival-system": {
+        "lastModified": "2026-02-27T04:09:49.625Z",
+        "ageMinutes": 2,
+        "data": {
+          "attempts": [
+            {
+              "timestamp": "2026-02-27T03:57:22.379Z",
+              "messagesGenerated": 0,
+              "networkStatus": {
+                "activeNodes": 0,
+                "totalNodes": 0,
+                "pendingJobs": 0,
+                "serviceAvailability": "limited"
+              }
+            },
+            {
+              "timestamp": "2026-02-27T04:09:49.625Z",
+              "messagesGenerated": 0,
+              "networkStatus": {
+                "activeNodes": 0,
+                "totalNodes": 0,
+                "pendingJobs": 0,
+                "serviceAvailability": "limited"
+              }
+            }
+          ],
+          "lastRun": "2026-02-27T04:09:49.625Z",
+          "stats": {
+            "totalAttempts": 0,
+            "successfulRevivals": 0,
+            "failedAttempts": 0
+          }
+        },
+        "fresh": true
+      },
+      "node-retention-investigator": {
+        "lastModified": "2026-02-27T04:10:30.937Z",
+        "ageMinutes": 1,
+        "data": {
+          "timestamp": "2026-02-27T04:10:30.938Z",
+          "analysis": {
+            "totalNodes": 0,
+            "currentState": {
+              "total": 0,
+              "active": 0,
+              "recent": 0,
+              "today": 0,
+              "week": 0,
+              "dormant": 0
+            },
+            "criticalAlert": "ZERO_NODES_DETECTED",
+            "retentionRates": {
+              "immediate": 0,
+              "daily": 0,
+              "weekly": 0
+            },
+            "nodePerformance": [],
+            "jobHistory": {
+              "total": 0,
+              "completed": 0,
+              "failed": 0,
+              "pending": 0
+            },
+            "networkActivity": "UNUSED",
+            "disconnectionPatterns": {
+              "simultaneousDisconnects": 0,
+              "gradualChurn": 0,
+              "performanceRelated": 0,
+              "timeBasedPatterns": {}
+            },
+            "capabilityRetention": {},
+            "networkCapability": "ZERO",
+            "insights": [
+              {
+                "type": "CRITICAL",
+                "issue": "Zero active nodes",
+                "impact": "Network cannot process any jobs",
+                "priority": 1
+              },
+              {
+                "type": "CRITICAL",
+                "issue": "Very low daily retention (<25%)",
+                "impact": "Unsustainable network operation",
+                "priority": 1
+              },
+              {
+                "type": "INFO",
+                "issue": "Limited capability diversity",
+                "impact": "Reduced network utility and earning potential",
+                "priority": 3
+              }
+            ],
+            "recommendations": [
+              {
+                "action": "Emergency node recruitment",
+                "steps": [
+                  "Contact previous operators via outreach campaign",
+                  "Offer incentives for immediate reconnection",
+                  "Debug infrastructure issues preventing connections",
+                  "Deploy monitoring to detect future mass disconnections"
+                ],
+                "priority": 1,
+                "timeframe": "IMMEDIATE"
+              },
+              {
+                "action": "Node retention program",
+                "steps": [
+                  "Create operator dashboard with earnings tracking",
+                  "Implement loyalty rewards for consistent uptime",
+                  "Add automated health checks and alerts",
+                  "Build community features for operator engagement"
+                ],
+                "priority": 3,
+                "timeframe": "1 month"
+              }
+            ]
+          },
+          "summary": {
+            "totalNodes": 0,
+            "activeNodes": 0,
+            "retentionRate": 0,
+            "networkHealth": "UNUSED",
+            "criticalIssues": 2,
+            "recommendations": 2
+          }
+        },
+        "fresh": true
+      }
+    }
+  },
+  "discrepancies": [
+    {
+      "type": "job_count_mismatch",
+      "severity": "high",
+      "description": "Database shows 0 pending jobs but API shows [object Object] available jobs",
+      "sources": {
+        "database": 0,
+        "api": {
+          "error": "fetch is not a function"
+        }
+      }
+    }
+  ],
+  "summary": {
+    "discrepanciesFound": 1,
+    "highSeverityIssues": 1,
+    "mediumSeverityIssues": 0,
+    "lowSeverityIssues": 0,
+    "overallConsistency": "poor"
+  }
+}
