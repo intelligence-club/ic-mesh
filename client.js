@@ -936,6 +936,18 @@ function handleWebSocketMessage(msg) {
   }
 }
 
+function claimJob(jobId) {
+  if (!wsConnection || wsConnection.readyState !== WebSocket.OPEN) {
+    console.log(`✗ Cannot claim job - WebSocket not connected`);
+    return;
+  }
+  
+  wsConnection.send(JSON.stringify({
+    type: 'job.claim',
+    jobId: jobId
+  }));
+}
+
 function checkResourceLimits() {
   const sysInfo = getSystemInfo();
   const cpuUsage = 100 - sysInfo.cpuIdle;
