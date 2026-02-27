@@ -113,6 +113,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
   CREATE INDEX IF NOT EXISTS idx_jobs_claimedBy ON jobs(claimedBy);
+  CREATE INDEX IF NOT EXISTS idx_jobs_createdAt ON jobs(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_nodes_lastSeen ON nodes(lastSeen);
 
   CREATE TABLE IF NOT EXISTS ledger (
     nodeId TEXT PRIMARY KEY,
