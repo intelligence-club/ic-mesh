@@ -44,8 +44,8 @@ class NodeHealthMonitor {
                     lastSeen,
                     registeredAt,
                     (julianday('now') - julianday(lastSeen/1000, 'unixepoch')) * 24 * 60 as minutesOffline,
-                    (SELECT COUNT(*) FROM jobs WHERE nodeId = nodes.nodeId AND status = 'completed') as completedJobs,
-                    (SELECT COUNT(*) FROM jobs WHERE nodeId = nodes.nodeId AND status = 'claimed' AND claimedAt < ?) as stuckJobs
+                    (SELECT COUNT(*) FROM jobs WHERE claimedBy = nodes.nodeId AND status = 'completed') as completedJobs,
+                    (SELECT COUNT(*) FROM jobs WHERE claimedBy = nodes.nodeId AND status = 'claimed' AND claimedAt < ?) as stuckJobs
                 FROM nodes 
                 ORDER BY lastSeen DESC
             `;
@@ -61,13 +61,13 @@ class NodeHealthMonitor {
         return new Promise((resolve, reject) => {
             const query = `
                 SELECT 
-                    capability,
+                    type as capability,
                     COUNT(*) as pendingJobs,
                     MIN(createdAt) as oldestJob,
                     (julianday('now') - julianday(MIN(createdAt)/1000, 'unixepoch')) * 24 * 60 as oldestJobMinutes
                 FROM jobs 
                 WHERE status = 'pending'
-                GROUP BY capability
+                GROUP BY type
                 ORDER BY COUNT(*) DESC
             `;
             
