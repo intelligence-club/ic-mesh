@@ -6,6 +6,8 @@ This directory contains operational and maintenance scripts for the IC Mesh netw
 
 **Most Important Scripts:**
 - `./health-check.js` — Verify your node is healthy
+- `./quick-health-check.js` — Fast system health overview
+- `./capacity-optimizer.js` — Analyze capacity and performance
 - `./node-diagnostics.js` — Diagnose node issues
 - `./operator-setup.js` — Initial operator setup
 - `./status.js` — Quick network status check
@@ -16,6 +18,8 @@ This directory contains operational and maintenance scripts for the IC Mesh netw
 | Script | Purpose | Usage |
 |--------|---------|-------|
 | `health-check.js` | Comprehensive health monitoring | `./health-check.js --full` |
+| `quick-health-check.js` | Fast system overview with correct DB path | `./quick-health-check.js` |
+| `capacity-optimizer.js` | High-load analysis and recommendations | `./capacity-optimizer.js` |
 | `node-diagnostics.js` | Diagnose specific node issues | `./node-diagnostics.js [nodeId]` |
 | `regenerative-health-monitor.js` | Long-term health tracking | `./regenerative-health-monitor.js monitor` |
 | `test-error-handling.js` | Test error handling robustness | `./test-error-handling.js` |
