@@ -590,5 +590,187 @@
       "completedJobs": 47,
       "serviceAvailability": "outage"
     }
+  },
+  {
+    "timestamp": "2026-02-27T13:08:37.794Z",
+    "alerts": [
+      {
+        "severity": "critical",
+        "type": "complete_outage",
+        "message": "COMPLETE SERVICE OUTAGE: 0/4 nodes active",
+        "details": {
+          "pendingJobs": 0,
+          "impact": "All customer jobs blocked"
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"ffmpeg\" has 0/4 active nodes",
+        "details": {
+          "capability": "ffmpeg",
+          "totalNodes": 4,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"browser\" has 0/1 active nodes",
+        "details": {
+          "capability": "browser",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"node\" has 0/1 active nodes",
+        "details": {
+          "capability": "node",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"email\" has 0/1 active nodes",
+        "details": {
+          "capability": "email",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"gpu-metal\" has 0/2 active nodes",
+        "details": {
+          "capability": "gpu-metal",
+          "totalNodes": 2,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"stable-diffusion\" has 0/1 active nodes",
+        "details": {
+          "capability": "stable-diffusion",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"whisper\" has 0/1 active nodes",
+        "details": {
+          "capability": "whisper",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      }
+    ],
+    "networkState": {
+      "activeNodes": 0,
+      "totalNodes": 4,
+      "pendingJobs": 0,
+      "completedJobs": 12,
+      "serviceAvailability": "outage"
+    }
+  },
+  {
+    "timestamp": "2026-02-27T13:09:31.455Z",
+    "alerts": [
+      {
+        "severity": "critical",
+        "type": "complete_outage",
+        "message": "COMPLETE SERVICE OUTAGE: 0/4 nodes active",
+        "details": {
+          "pendingJobs": 0,
+          "impact": "All customer jobs blocked"
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"ffmpeg\" has 0/4 active nodes",
+        "details": {
+          "capability": "ffmpeg",
+          "totalNodes": 4,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"browser\" has 0/1 active nodes",
+        "details": {
+          "capability": "browser",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"node\" has 0/1 active nodes",
+        "details": {
+          "capability": "node",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"email\" has 0/1 active nodes",
+        "details": {
+          "capability": "email",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"gpu-metal\" has 0/2 active nodes",
+        "details": {
+          "capability": "gpu-metal",
+          "totalNodes": 2,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"stable-diffusion\" has 0/1 active nodes",
+        "details": {
+          "capability": "stable-diffusion",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"whisper\" has 0/1 active nodes",
+        "details": {
+          "capability": "whisper",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      }
+    ],
+    "networkState": {
+      "activeNodes": 0,
+      "totalNodes": 4,
+      "pendingJobs": 0,
+      "completedJobs": 12,
+      "serviceAvailability": "outage"
+    }
   }
 ]
