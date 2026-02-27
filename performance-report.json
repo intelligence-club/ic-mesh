@@ -1,20 +1,21 @@
 {
-  "timestamp": 1772224117765,
+  "timestamp": 1772224532120,
   "serverInfo": {
     "responsive": true,
-    "responseTime": 27,
+    "responseTime": 21,
     "status": {
       "network": "Intelligence Club Mesh",
       "version": "0.3.0",
       "status": "online",
       "nodes": {
-        "active": 1,
+        "active": 2,
         "total": 6
       },
       "compute": {
         "totalCores": 1,
         "totalRAM_GB": 1.9,
         "capabilities": [
+          "transcription",
           "whisper",
           "ffmpeg",
           "tesseract"
@@ -30,20 +31,20 @@
         }
       },
       "jobs": {
-        "total": 224,
-        "completed": 169,
-        "pending": 22
+        "total": 238,
+        "completed": 178,
+        "pending": 35
       },
       "economics": {
-        "totalComputeMinutes": 40.82,
-        "treasuryMinutes": 8.16
+        "totalComputeMinutes": 42.16,
+        "treasuryMinutes": 8.43
       },
       "websocket": {
         "connected": 1
       },
-      "uptime": 6876.922452759
+      "uptime": 7291.271001629
     },
-    "timestamp": 1772224117796
+    "timestamp": 1772224532143
   },
   "endpointTests": {
     "Status": {
@@ -54,18 +55,18 @@
       "successes": 5,
       "failures": 0,
       "times": [
-        4,
+        2,
         3,
-        2,
-        2,
+        3,
+        1,
         1
       ],
       "errors": [],
-      "avgTime": 2.4,
+      "avgTime": 2,
       "minTime": 1,
-      "maxTime": 4,
-      "p95Time": 4,
-      "p99Time": 4
+      "maxTime": 3,
+      "p95Time": 3,
+      "p99Time": 3
     },
     "Nodes List": {
       "name": "Nodes List",
@@ -75,15 +76,15 @@
       "successes": 5,
       "failures": 0,
       "times": [
+        2,
+        2,
         3,
-        2,
-        2,
-        2,
-        0
+        1,
+        2
       ],
       "errors": [],
-      "avgTime": 1.8,
-      "minTime": 0,
+      "avgTime": 2,
+      "minTime": 1,
       "maxTime": 3,
       "p95Time": 3,
       "p99Time": 3
@@ -98,12 +99,12 @@
       "times": [
         2,
         2,
-        1,
         2,
-        1
+        1,
+        2
       ],
       "errors": [],
-      "avgTime": 1.6,
+      "avgTime": 1.8,
       "minTime": 1,
       "maxTime": 2,
       "p95Time": 2,
@@ -117,18 +118,18 @@
       "successes": 5,
       "failures": 0,
       "times": [
-        5,
+        4,
         2,
+        4,
         2,
-        1,
         2
       ],
       "errors": [],
-      "avgTime": 2.4,
-      "minTime": 1,
-      "maxTime": 5,
-      "p95Time": 5,
-      "p99Time": 5
+      "avgTime": 2.8,
+      "minTime": 2,
+      "maxTime": 4,
+      "p95Time": 4,
+      "p99Time": 4
     },
     "Job Creation": {
       "name": "Job Creation",
@@ -139,17 +140,17 @@
       "failures": 0,
       "times": [
         1,
-        2,
+        1,
         1,
         1,
         1
       ],
       "errors": [],
-      "avgTime": 1.2,
+      "avgTime": 1,
       "minTime": 1,
-      "maxTime": 2,
-      "p95Time": 2,
-      "p99Time": 2
+      "maxTime": 1,
+      "p95Time": 1,
+      "p99Time": 1
     }
   },
   "loadTests": {},
