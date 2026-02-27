@@ -1489,6 +1489,18 @@ const server = http.createServer(async (req, res) => {
         }))
       });
     }
+
+    // ---- Create API Key ----
+    if (method === 'POST' && pathname === '/api/create_api_key') {
+      // Generate a secure API key
+      const apiKey = `ic_${crypto.randomBytes(32).toString('hex')}`;
+      
+      return json(res, {
+        api_key: apiKey,
+        created: new Date().toISOString(),
+        note: 'Store this key securely. It will not be displayed again.'
+      });
+    }
     
     // ---- Operator Dashboard ----
     if (method === 'GET' && pathname.startsWith('/operator/')) {
