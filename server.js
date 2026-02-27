@@ -113,8 +113,6 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
   CREATE INDEX IF NOT EXISTS idx_jobs_claimedBy ON jobs(claimedBy);
-  CREATE INDEX IF NOT EXISTS idx_jobs_createdAt ON jobs(createdAt);
-  CREATE INDEX IF NOT EXISTS idx_nodes_lastSeen ON nodes(lastSeen);
 
   CREATE TABLE IF NOT EXISTS ledger (
     nodeId TEXT PRIMARY KEY,
@@ -372,6 +370,36 @@ function registerNode(data) {
     owner: data.owner || 'unknown', region: data.region || 'unknown',
     lastSeen: now, registeredAt: now
   });
+
+  // Founding Operator Logic
+  try {
+    const existingFounding = db.prepare(`
+      SELECT 1 FROM founding_operators WHERE nodeId = ?
+    `).get(id);
+
+    if (!existingFounding) {
+      const currentFoundingCount = db.prepare(`
+        SELECT COUNT(*) as count FROM founding_operators WHERE isActive = 1
+      `).get().count;
+      
+      if (currentFoundingCount < 50) {
+        // This node qualifies as a founding operator
+        const joinOrder = currentFoundingCount + 1;
+        
+        db.prepare(`
+          INSERT INTO founding_operators (nodeId, joinOrder, registeredAt, email, earningMultiplier)
+          VALUES (?, ?, ?, ?, 2.0)
+        `).run(id, joinOrder, now, data.owner || 'unknown');
+        
+        logger.info('founding-operator-added', `Node ${id} registered as founding operator #${joinOrder}`, {
+          nodeId: id, joinOrder, owner: data.owner
+        });
+      }
+    }
+  } catch (err) {
+    logger.error('founding-operator-check', err.message, { nodeId: id });
+  }
+
   return nodeToJSON(stmts.getNode.get(id));
 }
 
@@ -415,6 +443,9 @@ function aliasCapability(capability) {
 function getAvailableJobs(nodeId) {
   const pending = stmts.getPendingJobs.all();
   const node = stmts.getNode.get(nodeId);
+  console.log(`DEBUG: getAvailableJobs called with nodeId: ${nodeId}`);
+  console.log(`DEBUG: Found ${pending.length} pending jobs`);
+  console.log(`DEBUG: Node found:`, !!node);
   
   // Check if node is quarantined
   if (node) {
@@ -432,9 +463,8 @@ function getAvailableJobs(nodeId) {
     const req = JSON.parse(row.requirements || '{}');
     if (req.capability) {
       const requiredCap = aliasCapability(req.capability);
-      // Check if node has either the original capability OR the aliased capability (match claimJob logic)
-      const hasCapability = nodeCaps.includes(req.capability) || nodeCaps.includes(requiredCap);
-      if (!hasCapability) return false;
+      // Check both original and aliased capability names for compatibility
+      if (!nodeCaps.includes(requiredCap) && !nodeCaps.includes(req.capability)) return false;
     }
     if (req.model && !nodeModels.includes(req.model)) return false;
     if (req.minRAM && node && node.ramFreeMB < req.minRAM) return false;
@@ -465,9 +495,7 @@ function claimJob(jobId, nodeId) {
   if (req.capability) {
     const caps = node ? JSON.parse(node.capabilities || '[]') : [];
     const requiredCap = aliasCapability(req.capability);
-    // Check if node has either the original capability OR the aliased capability
-    const hasCapability = caps.includes(req.capability) || caps.includes(requiredCap);
-    if (!hasCapability) {
+    if (!caps.includes(requiredCap)) {
       logger.jobEvent(jobId.slice(0, 8), 'claim rejected', {
         nodeId: nodeId.slice(0, 8),
         reason: 'missing_capability',
@@ -619,9 +647,7 @@ function broadcastToEligibleNodes(job) {
     const caps = JSON.parse(node.capabilities || '[]');
     if (req.capability) {
       const requiredCap = aliasCapability(req.capability);
-      // Check if node has either the original capability OR the aliased capability (match claimJob logic)
-      const hasCapability = caps.includes(req.capability) || caps.includes(requiredCap);
-      if (!hasCapability) continue;
+      if (!caps.includes(requiredCap)) continue;
     }
     ws.send(JSON.stringify({ type: 'job.dispatch', job }));
   }
@@ -875,7 +901,8 @@ const server = http.createServer(async (req, res) => {
     
     if (method === 'GET' && pathname === '/jobs/available') {
       const nodeId = url.searchParams.get('nodeId') || req.headers['x-node-id'];
-      return json(res, { jobs: getAvailableJobs(nodeId), count: 0 });
+      const jobs = getAvailableJobs(nodeId);
+      return json(res, { jobs, count: jobs.length });
     }
     
     if (method === 'POST' && pathname.match(/^\/jobs\/[a-f0-9]+\/claim$/)) {
@@ -972,6 +999,52 @@ const server = http.createServer(async (req, res) => {
         total_jobs: totalJobs,
         nodes: nodeEarnings
       });
+    }
+
+    // ---- Founding Operator Status ----
+    if (method === 'GET' && pathname.match(/^\/founding-status\/([a-f0-9]+)$/)) {
+      const nodeId = pathname.split('/')[2];
+      
+      try {
+        const foundingInfo = db.prepare(`
+          SELECT joinOrder, earningMultiplier, registeredAt
+          FROM founding_operators 
+          WHERE nodeId = ? AND isActive = 1
+        `).get(nodeId);
+        
+        const totalFounding = db.prepare(`
+          SELECT COUNT(*) as count 
+          FROM founding_operators 
+          WHERE isActive = 1
+        `).get().count;
+        
+        const maxFounding = 50;
+        
+        if (foundingInfo) {
+          return json(res, {
+            isFounding: true,
+            joinOrder: foundingInfo.joinOrder,
+            earningMultiplier: foundingInfo.earningMultiplier,
+            totalFounding,
+            maxFounding,
+            spotsRemaining: maxFounding - totalFounding,
+            registeredAt: foundingInfo.registeredAt
+          });
+        } else {
+          return json(res, {
+            isFounding: false,
+            joinOrder: null,
+            earningMultiplier: 1.0,
+            totalFounding,
+            maxFounding,
+            spotsRemaining: maxFounding - totalFounding,
+            eligibleForFounding: totalFounding < maxFounding
+          });
+        }
+      } catch (err) {
+        logError('founding-status-lookup', err, { nodeId });
+        return json(res, { error: 'Database error' }, 500);
+      }
     }
 
     // ---- Node onboarding (Stripe Connect) ----
@@ -1489,30 +1562,6 @@ const server = http.createServer(async (req, res) => {
           body: m.body,
           created: m.created
         }))
-      });
-    }
-
-    // ---- Create API Key ----
-    if (method === 'POST' && pathname === '/api/create_api_key') {
-      // Generate a secure API key
-      const apiKey = `ic_${crypto.randomBytes(32).toString('hex')}`;
-      
-      return json(res, {
-        api_key: apiKey,
-        created: new Date().toISOString(),
-        note: 'Store this key securely. It will not be displayed again.'
-      });
-    }
-
-    // ---- API Keys (alias for create_api_key) ----
-    if (method === 'POST' && pathname === '/api/keys') {
-      // Generate a secure API key (same as create_api_key endpoint)
-      const apiKey = `ic_${crypto.randomBytes(32).toString('hex')}`;
-      
-      return json(res, {
-        api_key: apiKey,
-        created: new Date().toISOString(),
-        note: 'Store this key securely. It will not be displayed again.'
       });
     }
     
