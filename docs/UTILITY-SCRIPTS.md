@@ -8,6 +8,30 @@ This document catalogues all utility scripts available in the IC Mesh project, o
 
 ## 🔍 Analysis & Monitoring
 
+### `quick-capacity-check.js` ⭐ **NEW**
+**Purpose:** Quick real-time capacity and capability analysis  
+**Usage:** `node quick-capacity-check.js`  
+**Features:**
+- Real-time node status with online/offline indicators
+- Job queue analysis by type and status
+- Capability coverage mapping for pending jobs
+- Identifies which job types can be processed vs. blocked
+- Uses better-sqlite3 for fast, accurate database queries
+
+**Output Example:**
+```
+🔍 IC Mesh Capacity Status Check
+📡 Node Status:
+  🟢 ACTIVE 5ef95d69 | transcription | 2026-02-27 11:06:15
+  🔴 OFFLINE fcecb481 | tesseract, whisper | 2026-02-19 03:23:00
+📋 Job Status:
+  pending: 8 ocr jobs
+  pending: 8 pdf-extract jobs
+⚡ Capability Coverage:
+  ❌ 8 ocr (needs: tesseract)
+  ✅ 9 transcribe (needs: transcription)
+```
+
 ### `node-retention-toolkit.js` ⭐ **NEW**
 **Purpose:** Comprehensive node retention analysis and intervention system  
 **Usage:** 
