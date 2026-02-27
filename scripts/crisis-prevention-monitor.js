@@ -250,7 +250,7 @@ This is an automated alert from Crisis Prevention Monitor.
         fs.writeFileSync('URGENT-SERVICE-OUTAGE.json', JSON.stringify(alertData, null, 2));
         
         // Send notifications via multiple channels
-        await sendCrisisNotifications(status);
+        await this.sendCrisisNotifications(status);
         const alertMessage = `🚨 CRITICAL SERVICE OUTAGE ALERT 🚨
 
 ${status.message}
