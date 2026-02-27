@@ -1,16 +1,7 @@
 {
-  "lastCheck": "2026-02-27T14:28:48.763Z",
+  "lastCheck": "2026-02-27T15:03:12.143Z",
   "criticalNodes": {},
   "lastAlerts": [
-    {
-      "severity": "critical",
-      "type": "complete_outage",
-      "message": "COMPLETE SERVICE OUTAGE: 0/5 nodes active",
-      "details": {
-        "pendingJobs": 0,
-        "impact": "All customer jobs blocked"
-      }
-    },
     {
       "severity": "high",
       "type": "capability_gap",
@@ -84,11 +75,21 @@
     {
       "severity": "high",
       "type": "capability_gap",
-      "message": "Critical capability \"transcription\" has 0/1 active nodes",
+      "message": "Critical capability \"test\" has 0/1 active nodes",
       "details": {
-        "capability": "transcription",
+        "capability": "test",
         "totalNodes": 1,
         "activeNodes": 0
+      }
+    },
+    {
+      "severity": "medium",
+      "type": "job_backlog",
+      "message": "Job backlog: 23 pending jobs",
+      "details": {
+        "pendingJobs": 23,
+        "activeNodes": 1,
+        "jobsPerNode": 23
       }
     }
   ],
@@ -181,11 +182,19 @@
       ]
     },
     "1669e7240871e9f4": {
-      "status": "recently_disconnected",
-      "lastSeen": 1772201682837,
-      "jobsCompleted": 4,
+      "status": "active",
+      "lastSeen": 1772204580901,
+      "jobsCompleted": 7,
       "capabilities": [
         "transcription"
+      ]
+    },
+    "ec5f4cd4ab5d70e2": {
+      "status": "recently_disconnected",
+      "lastSeen": 1772203693450,
+      "jobsCompleted": 0,
+      "capabilities": [
+        "test"
       ]
     }
   }

@@ -873,5 +873,107 @@
       "completedJobs": 13,
       "serviceAvailability": "outage"
     }
+  },
+  {
+    "timestamp": "2026-02-27T15:03:12.162Z",
+    "alerts": [
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"ffmpeg\" has 0/4 active nodes",
+        "details": {
+          "capability": "ffmpeg",
+          "totalNodes": 4,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"browser\" has 0/1 active nodes",
+        "details": {
+          "capability": "browser",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"node\" has 0/1 active nodes",
+        "details": {
+          "capability": "node",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"email\" has 0/1 active nodes",
+        "details": {
+          "capability": "email",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"gpu-metal\" has 0/2 active nodes",
+        "details": {
+          "capability": "gpu-metal",
+          "totalNodes": 2,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"stable-diffusion\" has 0/1 active nodes",
+        "details": {
+          "capability": "stable-diffusion",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"whisper\" has 0/1 active nodes",
+        "details": {
+          "capability": "whisper",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "high",
+        "type": "capability_gap",
+        "message": "Critical capability \"test\" has 0/1 active nodes",
+        "details": {
+          "capability": "test",
+          "totalNodes": 1,
+          "activeNodes": 0
+        }
+      },
+      {
+        "severity": "medium",
+        "type": "job_backlog",
+        "message": "Job backlog: 23 pending jobs",
+        "details": {
+          "pendingJobs": 23,
+          "activeNodes": 1,
+          "jobsPerNode": 23
+        }
+      }
+    ],
+    "networkState": {
+      "activeNodes": 1,
+      "totalNodes": 6,
+      "pendingJobs": 23,
+      "completedJobs": 7,
+      "serviceAvailability": "available"
+    }
   }
 ]
