@@ -1501,6 +1501,18 @@ const server = http.createServer(async (req, res) => {
         note: 'Store this key securely. It will not be displayed again.'
       });
     }
+
+    // ---- API Keys (alias for create_api_key) ----
+    if (method === 'POST' && pathname === '/api/keys') {
+      // Generate a secure API key (same as create_api_key endpoint)
+      const apiKey = `ic_${crypto.randomBytes(32).toString('hex')}`;
+      
+      return json(res, {
+        api_key: apiKey,
+        created: new Date().toISOString(),
+        note: 'Store this key securely. It will not be displayed again.'
+      });
+    }
     
     // ---- Operator Dashboard ----
     if (method === 'GET' && pathname.startsWith('/operator/')) {
