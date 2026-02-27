@@ -118,10 +118,10 @@ class BusinessIntelligence {
 
     // Query payment transactions from ledger
     const totalRevenue = this.db.prepare(`
-      SELECT COALESCE(SUM(amount_ints), 0) as total 
+      SELECT COALESCE(SUM(earned), 0) as total 
       FROM ledger 
-      WHERE transaction_type = 'payment' AND amount_ints > 0
-    `).get()?.total / 100 || 0;
+      WHERE earned > 0
+    `).get()?.total || 0;
 
     const revenueL30D = this.db.prepare(`
       SELECT COALESCE(SUM(amount_ints), 0) as total 
