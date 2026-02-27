@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-02-27T13:33:57.247Z",
+  "healthScore": 0,
+  "issues": [
+    "Moderate queue backlog (18 jobs)",
+    "CRITICAL: No active transcription nodes"
+  ],
+  "recommendations": [
+    "🚨 URGENT: Service health below acceptable threshold"
+  ]
+}

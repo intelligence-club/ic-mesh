@@ -1,28 +1,14 @@
 {
-  "lastCheck": "2026-02-27T13:01:26.959Z",
+  "lastCheck": "2026-02-27T13:09:31.450Z",
   "criticalNodes": {},
   "lastAlerts": [
     {
       "severity": "critical",
       "type": "complete_outage",
-      "message": "COMPLETE SERVICE OUTAGE: 0/6 nodes active",
+      "message": "COMPLETE SERVICE OUTAGE: 0/4 nodes active",
       "details": {
-        "pendingJobs": 60,
+        "pendingJobs": 0,
         "impact": "All customer jobs blocked"
-      }
-    },
-    {
-      "severity": "high",
-      "type": "critical_node_offline",
-      "message": "Critical node \"unnamed\" offline for 13 minutes",
-      "details": {
-        "nodeId": "5ef95d698bdfa57a",
-        "jobsCompleted": 141,
-        "capabilities": [
-          "transcription"
-        ],
-        "owner": "unknown",
-        "lastSeen": "2026-02-27 12:47:34"
       }
     },
     {
@@ -38,10 +24,40 @@
     {
       "severity": "high",
       "type": "capability_gap",
-      "message": "Critical capability \"gpu-metal\" has 0/3 active nodes",
+      "message": "Critical capability \"browser\" has 0/1 active nodes",
+      "details": {
+        "capability": "browser",
+        "totalNodes": 1,
+        "activeNodes": 0
+      }
+    },
+    {
+      "severity": "high",
+      "type": "capability_gap",
+      "message": "Critical capability \"node\" has 0/1 active nodes",
+      "details": {
+        "capability": "node",
+        "totalNodes": 1,
+        "activeNodes": 0
+      }
+    },
+    {
+      "severity": "high",
+      "type": "capability_gap",
+      "message": "Critical capability \"email\" has 0/1 active nodes",
+      "details": {
+        "capability": "email",
+        "totalNodes": 1,
+        "activeNodes": 0
+      }
+    },
+    {
+      "severity": "high",
+      "type": "capability_gap",
+      "message": "Critical capability \"gpu-metal\" has 0/2 active nodes",
       "details": {
         "capability": "gpu-metal",
-        "totalNodes": 3,
+        "totalNodes": 2,
         "activeNodes": 0
       }
     },
@@ -58,91 +74,11 @@
     {
       "severity": "high",
       "type": "capability_gap",
-      "message": "Critical capability \"whisper\" has 0/2 active nodes",
+      "message": "Critical capability \"whisper\" has 0/1 active nodes",
       "details": {
         "capability": "whisper",
-        "totalNodes": 2,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"transcription\" has 0/1 active nodes",
-      "details": {
-        "capability": "transcription",
         "totalNodes": 1,
         "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"ollama\" has 0/1 active nodes",
-      "details": {
-        "capability": "ollama",
-        "totalNodes": 1,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"tesseract\" has 0/1 active nodes",
-      "details": {
-        "capability": "tesseract",
-        "totalNodes": 1,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"transcribe\" has 0/1 active nodes",
-      "details": {
-        "capability": "transcribe",
-        "totalNodes": 1,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"generate\" has 0/1 active nodes",
-      "details": {
-        "capability": "generate",
-        "totalNodes": 1,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"test\" has 0/2 active nodes",
-      "details": {
-        "capability": "test",
-        "totalNodes": 2,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"TEST_MODE\" has 0/1 active nodes",
-      "details": {
-        "capability": "TEST_MODE",
-        "totalNodes": 1,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "medium",
-      "type": "job_backlog",
-      "message": "Job backlog: 60 pending jobs",
-      "details": {
-        "pendingJobs": 60,
-        "activeNodes": 0,
-        "jobsPerNode": "infinite"
       }
     }
   ],
@@ -156,9 +92,9 @@
       ]
     },
     "9b6a3b5841dc2890": {
-      "status": "daily_churn",
-      "lastSeen": 1772131591521,
-      "jobsCompleted": 11,
+      "status": "offline",
+      "lastSeen": 1771990098989,
+      "jobsCompleted": 5,
       "capabilities": [
         "whisper",
         "ffmpeg",
@@ -167,7 +103,7 @@
     },
     "a47cd29ac23cf10e": {
       "status": "offline",
-      "lastSeen": 1771471380353,
+      "lastSeen": 1771990078565,
       "jobsCompleted": 6,
       "capabilities": [
         "ffmpeg",
@@ -213,6 +149,25 @@
       "jobsCompleted": 0,
       "capabilities": [
         "test"
+      ]
+    },
+    "c25d09daaa29cf90": {
+      "status": "offline",
+      "lastSeen": 1771904446606,
+      "jobsCompleted": 0,
+      "capabilities": [
+        "ffmpeg"
+      ]
+    },
+    "58bc900266e83670": {
+      "status": "offline",
+      "lastSeen": 1771891964685,
+      "jobsCompleted": 0,
+      "capabilities": [
+        "ffmpeg",
+        "browser",
+        "node",
+        "email"
       ]
     }
   }

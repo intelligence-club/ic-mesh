@@ -4,6 +4,8 @@
 
 A distributed compute mesh that connects idle hardware into a shared network. Transcription, image generation, AI inference — powered by real machines, not rented cloud.
 
+> ⚠️ **SERVICE STATUS:** Check [SERVICE-STATUS.md](./SERVICE-STATUS.md) for current network capacity and availability before submitting jobs or setting up nodes.
+
 🌐 **[Live Network Dashboard](https://moilol.com/mesh)**  
 📊 **[Network Status](https://moilol.com/mesh/status)**  
 🛠️ **[Use the Mesh](https://moilol.com/use.html)** — submit jobs via browser  
