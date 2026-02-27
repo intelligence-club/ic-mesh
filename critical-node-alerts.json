@@ -562,15 +562,15 @@
       "alertId": "a47cd29ac23cf10e_6d"
     }
   ],
-  "lastCheck": 1772219989335,
+  "lastCheck": 1772220935729,
   "summary": {
     "totalNodes": 6,
     "activeNodes": 3,
     "offlineNodes": 3,
-    "criticalAlertsGenerated": 2,
+    "criticalAlertsGenerated": 0,
     "criticalCapabilities": [
-      "transcription",
       "tesseract",
+      "transcription",
       "ollama",
       "transcribe",
       "generate",
@@ -578,10 +578,10 @@
     ],
     "capabilityCount": {
       "test": 1,
-      "transcription": 1,
       "whisper": 3,
       "ffmpeg": 4,
       "tesseract": 2,
+      "transcription": 1,
       "ollama": 1,
       "gpu-metal": 3,
       "transcribe": 1,
