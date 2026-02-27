@@ -1,6 +1,6 @@
 {
   "startTime": 1772172885116,
-  "lastHealthCheck": 1772189603857,
+  "lastHealthCheck": 1772205591776,
   "connectionRetries": 0,
   "memoryLeakDetected": false,
   "jobSuccessRate": 1,
@@ -24,6 +24,10 @@
     {
       "timestamp": 1772189603624,
       "latency": 45
+    },
+    {
+      "timestamp": 1772205588295,
+      "latency": 42
     }
   ],
   "cpuUsageHistory": [
@@ -46,6 +50,10 @@
     {
       "timestamp": 1772189603576,
       "usage": 21
+    },
+    {
+      "timestamp": 1772205588252,
+      "usage": 7.000000000000001
     }
   ],
   "memoryUsageHistory": [
@@ -68,6 +76,10 @@
     {
       "timestamp": 1772189603576,
       "percentage": 2.3372823931739286
+    },
+    {
+      "timestamp": 1772205588252,
+      "percentage": 2.362687636577993
     }
   ],
   "lastRecoveryActions": [],
@@ -75,7 +87,7 @@
     {
       "severity": "critical",
       "category": "network",
-      "issue": "Network connectivity issues (latency: 45ms)",
+      "issue": "Network connectivity issues (latency: 42ms)",
       "autoFixable": true
     },
     {
