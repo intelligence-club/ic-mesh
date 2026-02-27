@@ -307,9 +307,209 @@
       "details": "Owner: system | Critical capabilities: TEST_MODE | Jobs completed: 0",
       "action": "Contact system or recruit replacement",
       "alertId": "4a5cde9ebc1a473a_7d"
+    },
+    {
+      "nodeId": "a47cd29ac23cf10e",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 605782959,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "stable-diffusion"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "gpu-metal",
+        "stable-diffusion"
+      ],
+      "jobsCompleted": 6,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:47:59.773Z",
+      "message": "🚨 CRITICAL: Node frigg (a47cd29a) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
+      "action": "Contact Drake to restore node",
+      "alertId": "a47cd29ac23cf10e_7d"
+    },
+    {
+      "nodeId": "9b6a3b5841dc2890",
+      "nodeName": "miniclaw",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 605782959,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "whisper"
+      ],
+      "allCapabilities": [
+        "whisper",
+        "ffmpeg",
+        "gpu-metal"
+      ],
+      "jobsCompleted": 11,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:47:59.774Z",
+      "message": "🚨 CRITICAL: Node miniclaw (9b6a3b58) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: whisper | Jobs completed: 11",
+      "action": "Contact Drake to restore node",
+      "alertId": "9b6a3b5841dc2890_7d"
+    },
+    {
+      "nodeId": "fcecb481aa501e7a",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 605782959,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "ollama",
+        "whisper",
+        "tesseract",
+        "transcribe",
+        "generate"
+      ],
+      "allCapabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "jobsCompleted": 43,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:47:59.774Z",
+      "message": "🚨 CRITICAL: Node frigg (fcecb481) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: ollama, whisper, tesseract, transcribe, generate | Jobs completed: 43",
+      "action": "Contact Drake to restore node",
+      "alertId": "fcecb481aa501e7a_7d"
+    },
+    {
+      "nodeId": "4a5cde9ebc1a473a",
+      "nodeName": "test-processor",
+      "owner": "system",
+      "severity": "CRITICAL",
+      "offlineDuration": 605782959,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "TEST_MODE"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "TEST_MODE",
+        "test"
+      ],
+      "jobsCompleted": 0,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:47:59.775Z",
+      "message": "🚨 CRITICAL: Node test-processor (4a5cde9e) offline for 7 days",
+      "details": "Owner: system | Critical capabilities: TEST_MODE | Jobs completed: 0",
+      "action": "Contact system or recruit replacement",
+      "alertId": "4a5cde9ebc1a473a_7d"
+    },
+    {
+      "nodeId": "a47cd29ac23cf10e",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 605831337,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "stable-diffusion"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "gpu-metal",
+        "stable-diffusion"
+      ],
+      "jobsCompleted": 6,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:48:48.152Z",
+      "message": "🚨 CRITICAL: Node frigg (a47cd29a) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
+      "action": "Contact Drake to restore node",
+      "alertId": "a47cd29ac23cf10e_7d"
+    },
+    {
+      "nodeId": "9b6a3b5841dc2890",
+      "nodeName": "miniclaw",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 605831337,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "whisper"
+      ],
+      "allCapabilities": [
+        "whisper",
+        "ffmpeg",
+        "gpu-metal"
+      ],
+      "jobsCompleted": 11,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:48:48.152Z",
+      "message": "🚨 CRITICAL: Node miniclaw (9b6a3b58) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: whisper | Jobs completed: 11",
+      "action": "Contact Drake to restore node",
+      "alertId": "9b6a3b5841dc2890_7d"
+    },
+    {
+      "nodeId": "fcecb481aa501e7a",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 605831337,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "ollama",
+        "whisper",
+        "tesseract",
+        "transcribe",
+        "generate"
+      ],
+      "allCapabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "jobsCompleted": 43,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:48:48.152Z",
+      "message": "🚨 CRITICAL: Node frigg (fcecb481) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: ollama, whisper, tesseract, transcribe, generate | Jobs completed: 43",
+      "action": "Contact Drake to restore node",
+      "alertId": "fcecb481aa501e7a_7d"
+    },
+    {
+      "nodeId": "4a5cde9ebc1a473a",
+      "nodeName": "test-processor",
+      "owner": "system",
+      "severity": "CRITICAL",
+      "offlineDuration": 605831337,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "TEST_MODE"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "TEST_MODE",
+        "test"
+      ],
+      "jobsCompleted": 0,
+      "lastSeen": "2026-02-20T15:31:36.809Z",
+      "alertTime": "2026-02-27T15:48:48.152Z",
+      "message": "🚨 CRITICAL: Node test-processor (4a5cde9e) offline for 7 days",
+      "details": "Owner: system | Critical capabilities: TEST_MODE | Jobs completed: 0",
+      "action": "Contact system or recruit replacement",
+      "alertId": "4a5cde9ebc1a473a_7d"
     }
   ],
-  "lastCheck": 1772207043182,
+  "lastCheck": 1772207328146,
   "summary": {
     "totalNodes": 6,
     "activeNodes": 2,
@@ -317,24 +517,24 @@
     "criticalAlertsGenerated": 4,
     "criticalCapabilities": [
       "transcription",
-      "transcribe",
       "stable-diffusion",
       "whisper",
       "ollama",
       "tesseract",
+      "transcribe",
       "generate",
       "TEST_MODE"
     ],
     "capabilityCount": {
       "test": 2,
       "transcription": 1,
-      "transcribe": 2,
       "ffmpeg": 4,
       "gpu-metal": 3,
       "stable-diffusion": 1,
       "whisper": 2,
       "ollama": 1,
       "tesseract": 1,
+      "transcribe": 1,
       "generate": 1,
       "TEST_MODE": 1
     }
