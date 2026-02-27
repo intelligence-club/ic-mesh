@@ -1,0 +1,166 @@
+{
+  "timestamp": 1772224117765,
+  "serverInfo": {
+    "responsive": true,
+    "responseTime": 27,
+    "status": {
+      "network": "Intelligence Club Mesh",
+      "version": "0.3.0",
+      "status": "online",
+      "nodes": {
+        "active": 1,
+        "total": 6
+      },
+      "compute": {
+        "totalCores": 1,
+        "totalRAM_GB": 1.9,
+        "capabilities": [
+          "whisper",
+          "ffmpeg",
+          "tesseract"
+        ],
+        "models": [
+          "whisper:base"
+        ],
+        "modelsByService": {
+          "ollama": [],
+          "whisper": [
+            "base"
+          ]
+        }
+      },
+      "jobs": {
+        "total": 224,
+        "completed": 169,
+        "pending": 22
+      },
+      "economics": {
+        "totalComputeMinutes": 40.82,
+        "treasuryMinutes": 8.16
+      },
+      "websocket": {
+        "connected": 1
+      },
+      "uptime": 6876.922452759
+    },
+    "timestamp": 1772224117796
+  },
+  "endpointTests": {
+    "Status": {
+      "name": "Status",
+      "method": "GET",
+      "path": "/status",
+      "attempts": 5,
+      "successes": 5,
+      "failures": 0,
+      "times": [
+        4,
+        3,
+        2,
+        2,
+        1
+      ],
+      "errors": [],
+      "avgTime": 2.4,
+      "minTime": 1,
+      "maxTime": 4,
+      "p95Time": 4,
+      "p99Time": 4
+    },
+    "Nodes List": {
+      "name": "Nodes List",
+      "method": "GET",
+      "path": "/nodes",
+      "attempts": 5,
+      "successes": 5,
+      "failures": 0,
+      "times": [
+        3,
+        2,
+        2,
+        2,
+        0
+      ],
+      "errors": [],
+      "avgTime": 1.8,
+      "minTime": 0,
+      "maxTime": 3,
+      "p95Time": 3,
+      "p99Time": 3
+    },
+    "Available Jobs": {
+      "name": "Available Jobs",
+      "method": "GET",
+      "path": "/jobs/available",
+      "attempts": 5,
+      "successes": 5,
+      "failures": 0,
+      "times": [
+        2,
+        2,
+        1,
+        2,
+        1
+      ],
+      "errors": [],
+      "avgTime": 1.6,
+      "minTime": 1,
+      "maxTime": 2,
+      "p95Time": 2,
+      "p99Time": 2
+    },
+    "Node Registration": {
+      "name": "Node Registration",
+      "method": "POST",
+      "path": "/nodes/register",
+      "attempts": 5,
+      "successes": 5,
+      "failures": 0,
+      "times": [
+        5,
+        2,
+        2,
+        1,
+        2
+      ],
+      "errors": [],
+      "avgTime": 2.4,
+      "minTime": 1,
+      "maxTime": 5,
+      "p95Time": 5,
+      "p99Time": 5
+    },
+    "Job Creation": {
+      "name": "Job Creation",
+      "method": "POST",
+      "path": "/jobs",
+      "attempts": 5,
+      "successes": 5,
+      "failures": 0,
+      "times": [
+        1,
+        2,
+        1,
+        1,
+        1
+      ],
+      "errors": [],
+      "avgTime": 1.2,
+      "minTime": 1,
+      "maxTime": 2,
+      "p95Time": 2,
+      "p99Time": 2
+    }
+  },
+  "loadTests": {},
+  "databaseAnalysis": {},
+  "recommendations": [
+    {
+      "type": "monitoring",
+      "severity": "medium",
+      "message": "Performance monitoring is not integrated",
+      "suggestion": "Integrate the performance monitor module for continuous monitoring"
+    }
+  ],
+  "healthScore": 100
+}
