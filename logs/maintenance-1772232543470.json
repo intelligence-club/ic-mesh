@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-02-27T22:49:03.470Z",
+  "duration": "0s",
+  "summary": {
+    "tasksCompleted": 5,
+    "warnings": 1,
+    "errors": 0
+  },
+  "metrics": {
+    "database": {
+      "before": {
+        "total": 5,
+        "failed": 0,
+        "completed": 0
+      },
+      "after": {
+        "total": 5,
+        "failed": 0,
+        "completed": 0
+      },
+      "cleaned": 0
+    },
+    "health": {
+      "api": {
+        "responseTime": 19,
+        "status": "healthy"
+      },
+      "database": {
+        "status": "healthy",
+        "jobCount": 5
+      },
+      "disk": {
+        "availableGB": 64.9,
+        "status": "healthy"
+      },
+      "memory": {
+        "totalMB": 3915,
+        "usedMB": 1416,
+        "availableMB": 2499,
+        "usagePercent": 36,
+        "status": "healthy"
+      }
+    }
+  },
+  "warnings": [
+    "Security issue: Possible default credentials found in .env file"
+  ],
+  "errors": [],
+  "dryRun": false
+}
