@@ -72,34 +72,86 @@
       "details": "Owner: drake | Critical capabilities: browser, node, email | Jobs completed: 0",
       "action": "Contact Drake to restore node",
       "alertId": "58bc900266e83670_3d"
+    },
+    {
+      "nodeId": "fcecb481aa501e7a",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "HIGH",
+      "offlineDuration": 596685394,
+      "timeDescription": "6 days",
+      "capabilities": [
+        "ollama",
+        "tesseract",
+        "transcribe",
+        "generate"
+      ],
+      "allCapabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "jobsCompleted": 43,
+      "lastSeen": "2026-02-21T00:16:23.107Z",
+      "alertTime": "2026-02-27T22:01:08.515Z",
+      "message": "🚨 HIGH: Node frigg (fcecb481) offline for 6 days",
+      "details": "Owner: drake | Critical capabilities: ollama, tesseract, transcribe, generate | Jobs completed: 43",
+      "action": "Contact Drake to restore node",
+      "alertId": "fcecb481aa501e7a_6d"
+    },
+    {
+      "nodeId": "a47cd29ac23cf10e",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 611685394,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "stable-diffusion"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "gpu-metal",
+        "stable-diffusion"
+      ],
+      "jobsCompleted": 6,
+      "lastSeen": "2026-02-20T20:06:23.107Z",
+      "alertTime": "2026-02-27T22:01:08.516Z",
+      "message": "🚨 CRITICAL: Node frigg (a47cd29a) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
+      "action": "Contact Drake to restore node",
+      "alertId": "a47cd29ac23cf10e_7d"
     }
   ],
-  "lastCheck": 1772227784485,
+  "lastCheck": 1772229668501,
   "summary": {
-    "totalNodes": 11,
-    "activeNodes": 7,
-    "offlineNodes": 4,
-    "criticalAlertsGenerated": 0,
+    "totalNodes": 6,
+    "activeNodes": 3,
+    "offlineNodes": 3,
+    "criticalAlertsGenerated": 2,
     "criticalCapabilities": [
+      "tesseract",
       "transcription",
-      "gpu-metal",
-      "stable-diffusion",
-      "browser",
-      "node",
-      "email"
+      "ollama",
+      "transcribe",
+      "generate",
+      "stable-diffusion"
     ],
     "capabilityCount": {
-      "test": 2,
+      "test": 1,
+      "whisper": 3,
+      "ffmpeg": 4,
+      "tesseract": 2,
       "transcription": 1,
-      "ffmpeg": 7,
-      "tesseract": 3,
-      "whisper": 4,
-      "transcribe": 3,
-      "gpu-metal": 2,
-      "stable-diffusion": 1,
-      "browser": 1,
-      "node": 1,
-      "email": 1
+      "ollama": 1,
+      "gpu-metal": 3,
+      "transcribe": 1,
+      "generate": 1,
+      "stable-diffusion": 1
     }
   }
 }

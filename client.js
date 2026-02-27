@@ -1,6 +1,15 @@
 #!/usr/bin/env node
+// Fetch polyfill for Node.js < 18
+if (!globalThis.fetch) {
+  try { globalThis.fetch = require('node-fetch'); }
+  catch(e) {
+    console.error('❌ Node.js < 18 detected and node-fetch not installed.');
+    console.error('   Run: npm install node-fetch@2');
+    process.exit(1);
+  }
+}
 /**
- * IC Mesh — Node Client v0.2.0
+ * IC Mesh — Node Client v0.3.0
  * 
  * Runs on each node (Mac Mini, laptop, server).
  * Checks in with the coordination server, picks up jobs, reports results.
@@ -116,7 +125,14 @@ if (fs.existsSync(CONFIG_FILE)) {
         console.log(`  Schedule: ${config.schedule.available?.length || 0} time windows (${config.schedule.timezone})`);
       }
     } else {
-      // Simple flat format (sample.json style) 
+      // Simple flat format (sample.json style)
+      // Support common alternate key names
+      if (fileConfig.SERVER_HOST && !fileConfig.meshServer) {
+        const port = fileConfig.SERVER_PORT || 8333;
+        const protocol = port === 443 ? 'https' : 'http';
+        fileConfig.meshServer = `${protocol}://${fileConfig.SERVER_HOST}:${port}`;
+      }
+      if (fileConfig.NODE_ID && !fileConfig.nodeName) fileConfig.nodeName = fileConfig.NODE_ID;
       config = { ...config, ...fileConfig };
       console.log(`◉ Loaded simple config from ${CONFIG_FILE}`);
     }
@@ -1297,4 +1313,56 @@ async function main() {
   console.log('  Ctrl+C to leave.\n');
 }
 
-main().catch(console.error);
+// === --check mode: validate everything without connecting ===
+if (process.argv.includes('--check')) {
+  (async () => {
+    console.log('\n🔍 IC Mesh Node Check\n');
+    
+    // Node.js version
+    const nodeVer = process.version;
+    const major = parseInt(nodeVer.slice(1));
+    console.log(`  ${major >= 16 ? '✅' : '❌'} Node.js ${nodeVer} (minimum: v16)`);
+    
+    // Fetch
+    console.log(`  ${globalThis.fetch ? '✅' : '❌'} fetch: ${major >= 18 ? 'native' : 'polyfilled via node-fetch'}`);
+    
+    // Config
+    console.log(`  ${fs.existsSync(CONFIG_FILE) ? '✅' : '⚠️'} Config: ${fs.existsSync(CONFIG_FILE) ? CONFIG_FILE : 'using defaults'}`);
+    console.log(`     Server: ${MESH_SERVER}`);
+    console.log(`     Name: ${NODE_NAME}`);
+    console.log(`     Owner: ${NODE_OWNER}`);
+    
+    // Server reachable
+    try {
+      const resp = await fetch(`${MESH_SERVER}/status`);
+      const data = await resp.json();
+      console.log(`  ✅ Server: ${MESH_SERVER} reachable (${data.nodes?.active || 0} active nodes)`);
+    } catch (e) {
+      console.log(`  ❌ Server: ${MESH_SERVER} unreachable — ${e.message}`);
+    }
+    
+    // Capabilities
+    const scan = scanCapabilities();
+    console.log(`  📦 Handler specs: ${scan.specsLoaded} loaded`);
+    for (const [name, manifest] of Object.entries(scan.manifests)) {
+      const models = manifest.models?.length || 0;
+      console.log(`  ✅ ${name}: ${manifest.binary || 'detected'} (${models} models, ${manifest.backends.join('/')})`);
+    }
+    for (const s of scan.skipped) {
+      console.log(`  ⬚  ${s}: not detected`);
+    }
+    
+    // Legacy capabilities
+    const caps = getCapabilities();
+    const yamlCaps = scan.capabilities;
+    const legacyOnly = caps.filter(c => !yamlCaps.includes(c));
+    if (legacyOnly.length > 0) {
+      console.log(`  ℹ️  Legacy-detected: ${legacyOnly.join(', ')}`);
+    }
+    
+    console.log(`\n  Total capabilities: ${caps.length} → ${caps.join(', ')}`);
+    console.log(`  ${caps.length > 0 ? '✅ Ready to connect. Run: node client.js' : '❌ No capabilities detected.'}\n`);
+  })();
+} else {
+  main().catch(console.error);
+}

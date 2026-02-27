@@ -39,7 +39,17 @@ class CodeQualityAnalyzer {
     
     this.securityPatterns = [
       { pattern: /process\.env\[\s*['"](.*?)['"]\s*\]/, severity: 'low', message: 'Environment variable access without default' },
-      { pattern: /exec\s*\(/, severity: 'high', message: 'Direct exec() usage - potential command injection' },
+      { 
+        pattern: /exec\s*\(/, 
+        severity: 'high', 
+        message: 'Direct exec() usage - potential command injection',
+        validate: (match, line) => {
+          // Ignore database exec calls (SQLite, better-sqlite3)
+          return !line.includes('.db.exec(') && 
+                 !line.includes('this.db.exec(') && 
+                 !line.includes('Database.exec(');
+        }
+      },
       { pattern: /eval\s*\(/, severity: 'critical', message: 'eval() usage - critical security risk' },
       { pattern: /innerHTML\s*=/, severity: 'medium', message: 'innerHTML assignment - potential XSS risk' },
       { pattern: /require\s*\(\s*['"]\.\.\//, severity: 'low', message: 'Relative require path - potential path traversal' },
@@ -146,6 +156,11 @@ class CodeQualityAnalyzer {
             
             // Skip if the match is in a comment or documentation context
             if (!this.isInComment(contextLine) && !this.isDocumentationContext(contextLine, pattern.pattern)) {
+              // Use validate function if available
+              if (pattern.validate && !pattern.validate(match, contextLine)) {
+                return; // Skip this match
+              }
+              
               analysis.issues.push({
                 type: 'security',
                 severity: pattern.severity,
