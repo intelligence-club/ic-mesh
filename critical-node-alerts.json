@@ -485,17 +485,121 @@
       "details": "Owner: drake | Critical capabilities: ollama, whisper, tesseract, transcribe, generate | Jobs completed: 43",
       "action": "Contact Drake to restore node",
       "alertId": "fcecb481aa501e7a_8d"
+    },
+    {
+      "nodeId": "a47cd29ac23cf10e",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 706024490,
+      "timeDescription": "8 days",
+      "capabilities": [
+        "stable-diffusion"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "gpu-metal",
+        "stable-diffusion"
+      ],
+      "jobsCompleted": 6,
+      "lastSeen": "2026-02-19T03:23:00.353Z",
+      "alertTime": "2026-02-27T07:30:04.848Z",
+      "message": "🚨 CRITICAL: Node frigg (a47cd29a) offline for 8 days",
+      "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
+      "action": "Contact Drake to restore node",
+      "alertId": "a47cd29ac23cf10e_8d"
+    },
+    {
+      "nodeId": "fcecb481aa501e7a",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 706024490,
+      "timeDescription": "8 days",
+      "capabilities": [
+        "ollama",
+        "tesseract",
+        "transcribe",
+        "generate"
+      ],
+      "allCapabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "jobsCompleted": 43,
+      "lastSeen": "2026-02-19T03:23:00.353Z",
+      "alertTime": "2026-02-27T07:30:04.849Z",
+      "message": "🚨 CRITICAL: Node frigg (fcecb481) offline for 8 days",
+      "details": "Owner: drake | Critical capabilities: ollama, tesseract, transcribe, generate | Jobs completed: 43",
+      "action": "Contact Drake to restore node",
+      "alertId": "fcecb481aa501e7a_8d"
+    },
+    {
+      "nodeId": "a47cd29ac23cf10e",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 706024556,
+      "timeDescription": "8 days",
+      "capabilities": [
+        "stable-diffusion"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "gpu-metal",
+        "stable-diffusion"
+      ],
+      "jobsCompleted": 6,
+      "lastSeen": "2026-02-19T03:23:00.353Z",
+      "alertTime": "2026-02-27T07:30:04.913Z",
+      "message": "🚨 CRITICAL: Node frigg (a47cd29a) offline for 8 days",
+      "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
+      "action": "Contact Drake to restore node",
+      "alertId": "a47cd29ac23cf10e_8d"
+    },
+    {
+      "nodeId": "fcecb481aa501e7a",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 706024556,
+      "timeDescription": "8 days",
+      "capabilities": [
+        "ollama",
+        "tesseract",
+        "transcribe",
+        "generate"
+      ],
+      "allCapabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "jobsCompleted": 43,
+      "lastSeen": "2026-02-19T03:23:00.353Z",
+      "alertTime": "2026-02-27T07:30:04.914Z",
+      "message": "🚨 CRITICAL: Node frigg (fcecb481) offline for 8 days",
+      "details": "Owner: drake | Critical capabilities: ollama, tesseract, transcribe, generate | Jobs completed: 43",
+      "action": "Contact Drake to restore node",
+      "alertId": "fcecb481aa501e7a_8d"
     }
   ],
-  "lastCheck": 1772176632853,
+  "lastCheck": 1772177404909,
   "summary": {
     "totalNodes": 5,
     "activeNodes": 3,
     "offlineNodes": 2,
     "criticalAlertsGenerated": 2,
     "criticalCapabilities": [
-      "transcription",
-      "whisper",
       "stable-diffusion",
       "ollama",
       "tesseract",
@@ -504,8 +608,7 @@
     ],
     "capabilityCount": {
       "test": 1,
-      "transcription": 1,
-      "whisper": 2,
+      "whisper": 3,
       "ffmpeg": 3,
       "gpu-metal": 3,
       "stable-diffusion": 1,
