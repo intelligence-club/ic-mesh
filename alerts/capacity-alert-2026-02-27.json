@@ -1,0 +1,86 @@
+[
+  {
+    "timestamp": "2026-02-27T09:56:50.113Z",
+    "active_nodes": 0,
+    "recent_nodes": 1,
+    "total_pending_jobs": 130,
+    "critical": true,
+    "alerts": [
+      {
+        "level": "CRITICAL",
+        "type": "COMPLETE_OUTAGE",
+        "message": "Zero active nodes - complete service outage",
+        "impact": "130 customer jobs blocked"
+      },
+      {
+        "level": "HIGH",
+        "type": "CAPACITY_CRISIS",
+        "message": "130 pending jobs exceeds threshold (130)",
+        "impact": "Service degradation likely"
+      },
+      {
+        "level": "HIGH",
+        "type": "CAPABILITY_GAP",
+        "message": "No active nodes with 'pdf-extract' capability",
+        "impact": "50 jobs blocked"
+      },
+      {
+        "level": "HIGH",
+        "type": "CAPABILITY_GAP",
+        "message": "No active nodes with 'ocr' capability",
+        "impact": "50 jobs blocked"
+      },
+      {
+        "level": "HIGH",
+        "type": "CAPABILITY_GAP",
+        "message": "No active nodes with 'transcription' capability",
+        "impact": "27 jobs blocked"
+      }
+    ],
+    "capacity_analysis": {
+      "active": [],
+      "recent_offline": [
+        {
+          "nodeId": "5ef95d698bdfa57a",
+          "name": "unnamed",
+          "capabilities": "[\"transcription\"]",
+          "lastSeen": 1772185530055,
+          "jobsCompleted": 129,
+          "ms_ago": 680057
+        }
+      ],
+      "pending_by_type": [
+        {
+          "type": "ocr",
+          "count": 50
+        },
+        {
+          "type": "pdf-extract",
+          "count": 50
+        },
+        {
+          "type": "transcribe",
+          "count": 30
+        }
+      ],
+      "blocked_capabilities": [
+        {
+          "required_cap": "pdf-extract",
+          "blocked_jobs": 50
+        },
+        {
+          "required_cap": "ocr",
+          "blocked_jobs": 50
+        },
+        {
+          "required_cap": "transcription",
+          "blocked_jobs": 27
+        },
+        {
+          "required_cap": "TEST_MODE",
+          "blocked_jobs": 3
+        }
+      ]
+    }
+  }
+]
