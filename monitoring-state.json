@@ -1,30 +1,7 @@
 {
-  "lastCheck": "2026-02-27T07:41:55.643Z",
+  "lastCheck": "2026-02-27T09:33:26.023Z",
   "criticalNodes": {},
   "lastAlerts": [
-    {
-      "severity": "critical",
-      "type": "complete_outage",
-      "message": "COMPLETE SERVICE OUTAGE: 0/5 nodes active",
-      "details": {
-        "pendingJobs": 124,
-        "impact": "All customer jobs blocked"
-      }
-    },
-    {
-      "severity": "high",
-      "type": "critical_node_offline",
-      "message": "Critical node \"unnamed\" offline for 11 minutes",
-      "details": {
-        "nodeId": "5ef95d698bdfa57a",
-        "jobsCompleted": 119,
-        "capabilities": [
-          "transcription"
-        ],
-        "owner": "unknown",
-        "lastSeen": "2026-02-27 07:30:19"
-      }
-    },
     {
       "severity": "high",
       "type": "capability_gap",
@@ -62,16 +39,6 @@
       "details": {
         "capability": "whisper",
         "totalNodes": 2,
-        "activeNodes": 0
-      }
-    },
-    {
-      "severity": "high",
-      "type": "capability_gap",
-      "message": "Critical capability \"transcription\" has 0/1 active nodes",
-      "details": {
-        "capability": "transcription",
-        "totalNodes": 1,
         "activeNodes": 0
       }
     },
@@ -128,19 +95,19 @@
     {
       "severity": "medium",
       "type": "job_backlog",
-      "message": "Job backlog: 124 pending jobs",
+      "message": "Job backlog: 116 pending jobs",
       "details": {
-        "pendingJobs": 124,
-        "activeNodes": 0,
-        "jobsPerNode": "infinite"
+        "pendingJobs": 116,
+        "activeNodes": 1,
+        "jobsPerNode": 116
       }
     }
   ],
   "nodeStates": {
     "5ef95d698bdfa57a": {
-      "status": "recently_disconnected",
-      "lastSeen": 1772177419223,
-      "jobsCompleted": 119,
+      "status": "active",
+      "lastSeen": 1772184764271,
+      "jobsCompleted": 128,
       "capabilities": [
         "transcription"
       ]
@@ -181,7 +148,7 @@
     },
     "5363c6e50c68a5d1": {
       "status": "recently_disconnected",
-      "lastSeen": 1772176632827,
+      "lastSeen": 1772184072331,
       "jobsCompleted": 0,
       "capabilities": [
         "test"
