@@ -508,6 +508,49 @@ function registerNode(data) {
     logger.error('founding-operator-check', err.message, { nodeId: id });
   }
 
+  // === Benchmark-on-registration (Protocol v2) ===
+  // If node has capabilities we can benchmark and no recent samples, queue a benchmark job
+  try {
+    const nodeCaps = data.capabilities || [];
+    const benchmarkableCaps = ['whisper']; // Capabilities we have reference files for
+    for (const cap of benchmarkableCaps) {
+      if (!nodeCaps.includes(cap) && !nodeCaps.includes(aliasCapability(cap))) continue;
+      
+      const recentSamples = getRecentBenchmarks.all(id, cap);
+      const lastBenchmark = recentSamples[0]?.timestamp || 0;
+      const hoursSinceLastBenchmark = (now - lastBenchmark) / 3600000;
+      
+      // Submit benchmark if: no samples, or stale (> 6 hours)
+      if (recentSamples.length === 0 || hoursSinceLastBenchmark > 6) {
+        // Use the server's public URL if behind proxy, otherwise localhost
+        const benchmarkUrl = process.env.IC_MESH_PUBLIC_URL 
+          ? `${process.env.IC_MESH_PUBLIC_URL}/files/benchmark-whisper-5sec.wav`
+          : `http://localhost:${PORT}/files/benchmark-whisper-5sec.wav`;
+        const existingBenchmarkJob = db.prepare(
+          "SELECT 1 FROM jobs WHERE type = '_benchmark' AND claimedBy = ? AND status IN ('pending', 'claimed') LIMIT 1"
+        ).get(id);
+        
+        if (!existingBenchmarkJob) {
+          submitJob({
+            type: 'transcribe',
+            payload: {
+              url: benchmarkUrl,
+              _benchmark: true,
+              _benchmark_capability: cap,
+              duration_seconds: 5 // known duration for RTF calculation
+            },
+            requirements: { capability: cap },
+            requester: '_benchmark'
+          });
+          logger.info(`Benchmark job queued for ${data.name || id}`, { nodeId: id, capability: cap });
+        }
+      }
+    }
+  } catch (e) {
+    // Non-critical: don't fail registration over benchmark
+    logger.warn(`Benchmark queue failed: ${e.message}`, { nodeId: id });
+  }
+
   return nodeToJSON(stmts.getNode.get(id));
 }
 
@@ -722,13 +765,15 @@ function completeJob(jobId, nodeId, result) {
     // RTF: if we know input duration, compute realtime factor
     const inputDuration = payload.duration_seconds || payload.duration || null;
     const rtf = inputDuration ? (inputDuration / (computeMs / 1000)) : null;
+    const isBenchmark = !!payload._benchmark;
+    const isWarm = !isBenchmark; // Real jobs are "warm", benchmark jobs are "cold"
     
     if (capability && computeMs > 0) {
       insertBenchmark.run(
         nodeId, capability, rtf, computeMs,
         1, // passed (completed successfully)
-        1, // warm (real job, not cold benchmark)
-        null, // output_sample
+        isWarm ? 1 : 0, // warm = real job, cold = benchmark
+        isBenchmark ? JSON.stringify(result.data || null)?.slice(0, 500) : null,
         now
       );
     }
@@ -946,7 +991,7 @@ const server = http.createServer(async (req, res) => {
             if (headerEnd > 4 && footerStart > headerEnd) {
               const fileData = body.slice(headerEnd, footerStart);
               const result = await storage.uploadFile(fileData, origFilename);
-              logger.api('File uploaded', result.filename, {
+              logger.info(`File uploaded: ${result.filename}`, {
                 sizeMB: (result.size / 1024 / 1024).toFixed(1),
                 storage: result.storage,
                 type: 'file_upload'
@@ -1216,7 +1261,7 @@ const server = http.createServer(async (req, res) => {
           });
           if (!keyCheck.valid) {
             // Allow through for now during beta, but log
-            logger.api('Unvalidated API key', apiKey.slice(0, 8), {
+            logger.info(`Unvalidated API key: ${apiKey.slice(0, 8)}`, {
               ip: clientIp,
               status: 'unvalidated_but_allowed',
               phase: 'beta'
@@ -1482,7 +1527,7 @@ const server = http.createServer(async (req, res) => {
         });
         return json(res, { ok: true, ...result });
       } catch (e) {
-        logger.api('Stripe Connect error', nodeId.slice(0, 8), {
+        logger.info(`Stripe Connect error: ${nodeId.slice(0, 8)}`, {
           error: e.message,
           email: email,
           country: country || 'US'
