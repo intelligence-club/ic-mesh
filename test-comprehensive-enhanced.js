@@ -169,9 +169,11 @@ suite.test('GET /nodes returns nodes data', async () => {
 suite.test('POST /nodes/register creates a node', async () => {
   const nodeData = {
     nodeId: 'test-node-' + Date.now(),
+    name: 'test-node-' + Date.now(),
     capabilities: ['transcription'],
     reputation: 1000,
-    location: 'test'
+    location: 'test',
+    owner: 'test-user'
   };
 
   const res = await suite.request('POST', '/nodes/register', nodeData);
@@ -278,9 +280,11 @@ suite.test('Job claiming workflow (isolated)', async () => {
   // Create a node first with a truly unique ID and TEST_MODE capability
   const nodeData = {
     nodeId: 'claiming-node-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+    name: 'claiming-node-' + Date.now(),
     capabilities: ['transcription', 'TEST_MODE'],
     reputation: 1000,
-    location: 'test'
+    location: 'test',
+    owner: 'test-user'
   };
   const registerRes = await suite.request('POST', '/nodes/register', nodeData);
   
@@ -316,9 +320,11 @@ suite.test('Job completion workflow (isolated)', async () => {
   // Create a node with a truly unique ID
   const nodeData = {
     nodeId: 'completion-node-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+    name: 'completion-node-' + Date.now(),
     capabilities: ['transcription', 'TEST_MODE'],
     reputation: 1000,
-    location: 'test'
+    location: 'test',
+    owner: 'test-user'
   };
   const registerRes = await suite.request('POST', '/nodes/register', nodeData);
   
@@ -381,9 +387,11 @@ suite.test('Node duplicate registration handling', async () => {
   const nodeId = 'duplicate-node-' + Date.now();
   const nodeData = {
     nodeId,
+    name: 'duplicate-node-' + Date.now(),
     capabilities: ['transcription'],
     reputation: 1000,
-    location: 'test'
+    location: 'test',
+    owner: 'test-user'
   };
 
   // First registration
