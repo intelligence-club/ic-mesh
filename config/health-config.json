@@ -1,0 +1,18 @@
+{
+  "thresholds": {
+    "criticalPendingJobs": 50,
+    "highPendingJobs": 20,
+    "minActiveNodes": 2,
+    "maxNodeOfflineMinutes": 30,
+    "minJobCompletionRate": 0.85,
+    "maxMemoryUsagePercent": 90,
+    "maxCpuUsagePercent": 85,
+    "minDiskFreeGB": 5,
+    "maxResponseTimeMs": 2000
+  },
+  "alerts": {
+    "enabled": true,
+    "channels": []
+  },
+  "lastUpdated": "2026-02-27T09:03:36.970Z"
+}

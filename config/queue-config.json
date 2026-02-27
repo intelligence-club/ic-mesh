@@ -1,0 +1,24 @@
+{
+  "priorities": {
+    "transcribe": 100,
+    "ocr": 80,
+    "pdf-extract": 80,
+    "generate": 60,
+    "stable-diffusion": 40
+  },
+  "optimizations": {
+    "enableDuplicateDetection": true,
+    "enableJobConsolidation": false,
+    "enableRetryOptimization": true,
+    "maxRetries": 3,
+    "retryDelayMinutes": 5,
+    "staleJobHours": 48,
+    "duplicateThresholdMs": 30000
+  },
+  "processing": {
+    "batchSize": 10,
+    "preferSmallJobs": true,
+    "balanceByCapability": true,
+    "predictProcessingTime": true
+  }
+}
