@@ -1,0 +1,30 @@
+{
+  "attempts": [
+    {
+      "timestamp": "2026-02-27T03:57:22.379Z",
+      "messagesGenerated": 0,
+      "networkStatus": {
+        "activeNodes": 0,
+        "totalNodes": 0,
+        "pendingJobs": 0,
+        "serviceAvailability": "limited"
+      }
+    },
+    {
+      "timestamp": "2026-02-27T04:09:49.625Z",
+      "messagesGenerated": 0,
+      "networkStatus": {
+        "activeNodes": 0,
+        "totalNodes": 0,
+        "pendingJobs": 0,
+        "serviceAvailability": "limited"
+      }
+    }
+  ],
+  "lastRun": "2026-02-27T04:09:49.625Z",
+  "stats": {
+    "totalAttempts": 0,
+    "successfulRevivals": 0,
+    "failedAttempts": 0
+  }
+}
