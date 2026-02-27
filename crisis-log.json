@@ -1,0 +1,10 @@
+{
+  "crisisStart": "2026-02-27T06:09:25.975Z",
+  "events": [],
+  "lastUpdate": null,
+  "recoveryProgress": {
+    "nodesRecovered": 0,
+    "jobsProcessed": 0,
+    "serviceRestored": false
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "startTime": 1772172885116,
+  "lastHealthCheck": 1772172885560,
+  "connectionRetries": 0,
+  "memoryLeakDetected": false,
+  "jobSuccessRate": 1,
+  "networkLatencyHistory": [
+    {
+      "timestamp": 1772172885170,
+      "latency": 46
+    }
+  ],
+  "cpuUsageHistory": [
+    {
+      "timestamp": 1772172885121,
+      "usage": 4
+    }
+  ],
+  "memoryUsageHistory": [
+    {
+      "timestamp": 1772172885121,
+      "percentage": 2.3372823931739286
+    }
+  ],
+  "lastRecoveryActions": [],
+  "issuesDetected": [
+    {
+      "severity": "critical",
+      "category": "network",
+      "issue": "Network connectivity issues (latency: 46ms)",
+      "autoFixable": true
+    },
+    {
+      "severity": "high",
+      "category": "configuration",
+      "issue": "Configuration problems detected",
+      "autoFixable": true
+    }
+  ],
+  "performanceMetrics": {}
+}

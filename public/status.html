@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IC Mesh - Service Status</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .overall-status {
+            text-align: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .status-indicator {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .status-operational { background: #10b981; }
+        .status-degraded { background: #f59e0b; }
+        .status-outage { background: #ef4444; }
+
+        .status-text {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-description {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .service-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .service-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .service-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .service-description {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+
+        .service-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-up { background: #dcfce7; color: #166534; }
+        .status-down { background: #fee2e2; color: #991b1b; }
+        .status-issues { background: #fef3c7; color: #92400e; }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .metric {
+            text-align: center;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .metric-label {
+            color: #6b7280;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+
+        .incidents {
+            margin-top: 2rem;
+        }
+
+        .incident-item {
+            padding: 1.5rem;
+            border-left: 4px solid #ef4444;
+            background: #fef2f2;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 1rem;
+        }
+
+        .incident-title {
+            font-weight: 600;
+            color: #991b1b;
+            margin-bottom: 0.5rem;
+        }
+
+        .incident-description {
+            color: #7f1d1d;
+            margin-bottom: 0.5rem;
+        }
+
+        .incident-time {
+            color: #991b1b;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .update-time {
+            text-align: center;
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid #eee;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>IC Mesh Status</h1>
+            <p>Real-time service availability and performance metrics</p>
+        </div>
+
+        <div class="status-card">
+            <div class="overall-status">
+                <div id="overall-indicator" class="status-indicator loading">
+                    ⏳
+                </div>
+                <div id="overall-text" class="status-text">Checking Status...</div>
+                <div id="overall-description" class="status-description">Loading service status information</div>
+            </div>
+
+            <div class="services-grid" id="services-list">
+                <!-- Services will be populated by JavaScript -->
+            </div>
+
+            <div class="metrics" id="metrics">
+                <!-- Metrics will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <div class="status-card incidents" id="incidents-section" style="display: none;">
+            <h3 style="margin-bottom: 1rem;">Current Incidents</h3>
+            <div id="incidents-list">
+                <!-- Incidents will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <div class="update-time">
+            <span id="last-updated">Last updated: Loading...</span>
+        </div>
+    </div>
+
+    <script>
+        class StatusPageManager {
+            constructor() {
+                this.apiBase = window.location.origin;
+                this.meshBase = `${this.apiBase}/mesh`;
+                this.updateInterval = 30000; // 30 seconds
+                this.lastUpdate = null;
+            }
+
+            async init() {
+                await this.loadStatus();
+                setInterval(() => this.loadStatus(), this.updateInterval);
+            }
+
+            async loadStatus() {
+                try {
+                    // Load mesh status and health data
+                    const [meshStatus, healthData] = await Promise.all([
+                        this.fetchWithTimeout(`${this.meshBase}/status`, 10000),
+                        this.fetchWithTimeout(`${this.apiBase}/health`, 10000)
+                    ]);
+
+                    const status = await meshStatus.json();
+                    const health = await healthData.json();
+
+                    this.updateOverallStatus(status, health);
+                    this.updateServices(status, health);
+                    this.updateMetrics(status, health);
+                    this.updateIncidents(status);
+                    this.updateTimestamp();
+
+                } catch (error) {
+                    console.error('Failed to load status:', error);
+                    this.showErrorState(error.message);
+                }
+            }
+
+            async fetchWithTimeout(url, timeout) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
+                
+                try {
+                    const response = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    return response;
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    throw error;
+                }
+            }
+
+            updateOverallStatus(meshStatus, health) {
+                const indicator = document.getElementById('overall-indicator');
+                const text = document.getElementById('overall-text');
+                const description = document.getElementById('overall-description');
+
+                const activeNodes = meshStatus.nodes?.filter(n => n.active)?.length || 0;
+                const totalNodes = meshStatus.nodes?.length || 0;
+                const pendingJobs = meshStatus.pendingJobs || 0;
+
+                let status, statusText, statusDesc, emoji;
+
+                if (activeNodes === 0 && totalNodes > 0) {
+                    // Complete outage
+                    status = 'status-outage';
+                    statusText = 'Service Outage';
+                    emoji = '🔴';
+                    statusDesc = `All ${totalNodes} compute nodes are offline. Customer jobs cannot be processed.`;
+                } else if (activeNodes < 2 && pendingJobs > 10) {
+                    // Degraded performance
+                    status = 'status-degraded';
+                    statusText = 'Degraded Performance';
+                    emoji = '🟡';
+                    statusDesc = `Limited capacity: ${activeNodes}/${totalNodes} nodes active, ${pendingJobs} jobs pending.`;
+                } else if (activeNodes > 0) {
+                    // Operational
+                    status = 'status-operational';
+                    statusText = 'All Systems Operational';
+                    emoji = '🟢';
+                    statusDesc = `${activeNodes}/${totalNodes} compute nodes active and processing jobs.`;
+                } else {
+                    // Unknown/No nodes
+                    status = 'status-degraded';
+                    statusText = 'Limited Service';
+                    emoji = '⚠️';
+                    statusDesc = 'Service is starting up or network is being established.';
+                }
+
+                indicator.className = `status-indicator ${status}`;
+                indicator.textContent = emoji;
+                text.textContent = statusText;
+                description.textContent = statusDesc;
+            }
+
+            updateServices(meshStatus, health) {
+                const servicesList = document.getElementById('services-list');
+                
+                const activeNodes = meshStatus.nodes?.filter(n => n.active) || [];
+                const capabilities = new Set();
+                activeNodes.forEach(node => {
+                    if (node.capabilities) {
+                        node.capabilities.forEach(cap => capabilities.add(cap));
+                    }
+                });
+
+                const services = [
+                    {
+                        name: 'Audio Transcription',
+                        description: 'AI-powered speech-to-text processing',
+                        status: capabilities.has('transcribe') || capabilities.has('whisper') ? 'up' : 'down',
+                        key: 'transcription'
+                    },
+                    {
+                        name: 'Document OCR',
+                        description: 'Text extraction from images and PDFs',
+                        status: capabilities.has('tesseract') || capabilities.has('ocr') ? 'up' : 'down',
+                        key: 'ocr'
+                    },
+                    {
+                        name: 'PDF Processing',
+                        description: 'PDF text extraction and analysis',
+                        status: capabilities.has('pdf-extract') ? 'up' : 'down',
+                        key: 'pdf'
+                    },
+                    {
+                        name: 'AI Generation',
+                        description: 'Text and image generation via LLMs',
+                        status: capabilities.has('ollama') || capabilities.has('stable-diffusion') ? 'up' : 'down',
+                        key: 'ai'
+                    },
+                    {
+                        name: 'Payment Processing',
+                        description: 'Stripe-powered credit purchases',
+                        status: health.status === 'healthy' ? 'up' : 'down',
+                        key: 'payments'
+                    },
+                    {
+                        name: 'API Gateway',
+                        description: 'REST API for job submission',
+                        status: health.status === 'healthy' ? 'up' : 'down',
+                        key: 'api'
+                    }
+                ];
+
+                servicesList.innerHTML = services.map(service => `
+                    <div class="service-item">
+                        <div>
+                            <div class="service-name">${service.name}</div>
+                            <div class="service-description">${service.description}</div>
+                        </div>
+                        <div class="service-status status-${service.status}">
+                            ${service.status === 'up' ? 'Operational' : 'Unavailable'}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updateMetrics(meshStatus, health) {
+                const metricsContainer = document.getElementById('metrics');
+                
+                const activeNodes = meshStatus.nodes?.filter(n => n.active)?.length || 0;
+                const totalNodes = meshStatus.nodes?.length || 0;
+                const pendingJobs = meshStatus.pendingJobs || 0;
+                const completedJobs = meshStatus.completedJobs || 0;
+                
+                // Calculate uptime percentage (simplified)
+                const uptimePercent = totalNodes > 0 ? Math.round((activeNodes / totalNodes) * 100) : 0;
+
+                const metrics = [
+                    {
+                        value: `${activeNodes}/${totalNodes}`,
+                        label: 'Active Nodes'
+                    },
+                    {
+                        value: pendingJobs.toLocaleString(),
+                        label: 'Pending Jobs'
+                    },
+                    {
+                        value: completedJobs.toLocaleString(),
+                        label: 'Jobs Completed'
+                    },
+                    {
+                        value: `${uptimePercent}%`,
+                        label: 'Network Uptime'
+                    }
+                ];
+
+                metricsContainer.innerHTML = metrics.map(metric => `
+                    <div class="metric">
+                        <div class="metric-value">${metric.value}</div>
+                        <div class="metric-label">${metric.label}</div>
+                    </div>
+                `).join('');
+            }
+
+            updateIncidents(meshStatus) {
+                const incidentsSection = document.getElementById('incidents-section');
+                const incidentsList = document.getElementById('incidents-list');
+                
+                const incidents = [];
+                const activeNodes = meshStatus.nodes?.filter(n => n.active)?.length || 0;
+                const totalNodes = meshStatus.nodes?.length || 0;
+                const pendingJobs = meshStatus.pendingJobs || 0;
+
+                // Check for service outage
+                if (activeNodes === 0 && totalNodes > 0) {
+                    incidents.push({
+                        title: 'Complete Service Outage',
+                        description: `All ${totalNodes} compute nodes are currently offline. Customer jobs cannot be processed. We are actively working to restore service.`,
+                        time: 'Ongoing',
+                        severity: 'critical'
+                    });
+                }
+
+                // Check for capacity issues
+                if (activeNodes > 0 && activeNodes < 2 && pendingJobs > 10) {
+                    incidents.push({
+                        title: 'Limited Processing Capacity',
+                        description: `Only ${activeNodes} of ${totalNodes} nodes are active. ${pendingJobs} jobs are pending processing. This may cause delays.`,
+                        time: 'Ongoing',
+                        severity: 'warning'
+                    });
+                }
+
+                if (incidents.length > 0) {
+                    incidentsSection.style.display = 'block';
+                    incidentsList.innerHTML = incidents.map(incident => `
+                        <div class="incident-item">
+                            <div class="incident-title">${incident.title}</div>
+                            <div class="incident-description">${incident.description}</div>
+                            <div class="incident-time">Status: ${incident.time}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    incidentsSection.style.display = 'none';
+                }
+            }
+
+            updateTimestamp() {
+                const lastUpdated = document.getElementById('last-updated');
+                const now = new Date();
+                this.lastUpdate = now;
+                lastUpdated.textContent = `Last updated: ${now.toLocaleTimeString()} (auto-refresh every 30s)`;
+            }
+
+            showErrorState(errorMessage) {
+                const indicator = document.getElementById('overall-indicator');
+                const text = document.getElementById('overall-text');
+                const description = document.getElementById('overall-description');
+
+                indicator.className = 'status-indicator status-degraded';
+                indicator.textContent = '⚠️';
+                text.textContent = 'Status Check Failed';
+                description.textContent = `Unable to fetch current status: ${errorMessage}`;
+
+                document.getElementById('services-list').innerHTML = `
+                    <div class="loading">Unable to load service information</div>
+                `;
+                
+                document.getElementById('metrics').innerHTML = `
+                    <div class="loading">Unable to load metrics</div>
+                `;
+            }
+        }
+
+        // Initialize status page when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusManager = new StatusPageManager();
+            statusManager.init();
+        });
+    </script>
+</body>
+</html>

@@ -1,13 +1,13 @@
-# Reconnection Outreach - Node a47cd29a
+# Reconnection Outreach - Node fcecb481
 
 ## Target Analysis
 - **Priority:** MEDIUM
-- **Score:** 61/100
+- **Score:** 65/100
 - **Owner:** drake
 - **Offline:** 195 hours
-- **Success Rate:** 100%
-- **Jobs Completed:** 6
-- **Capabilities:** ffmpeg, gpu-metal, stable-diffusion
+- **Success Rate:** 61%
+- **Jobs Completed:** 43
+- **Capabilities:** ollama, whisper, ffmpeg, tesseract, gpu-metal, transcribe, generate
 
 ## Personalized Message
 
@@ -15,7 +15,7 @@
 
 Hi drake,
 
-Your IC Mesh node (a47cd29a) has been offline for 195 hours.
+Your IC Mesh node (fcecb481) has been offline for 195 hours.
 
 Since you've been away:
 • Network capacity has been reduced
@@ -42,8 +42,8 @@ IC Mesh Network Team
 4. Track response and update campaign metrics
 
 ## Technical Support Ready
-- Diagnostic command: `node tools/comprehensive-node-diagnosis.js a47cd29ac23cf10e`
-- Common issues: connection stability
+- Diagnostic command: `node tools/comprehensive-node-diagnosis.js fcecb481aa501e7a`
+- Common issues: handler configuration, connection stability
 - Setup assistance available
 
 ---

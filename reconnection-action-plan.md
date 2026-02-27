@@ -1,15 +1,15 @@
 # Operator Reconnection Action Plan
-Generated: 2026-02-25T22:04:05.910Z
+Generated: 2026-02-27T06:25:56.662Z
 
 ## Campaign Overview
-- **Total targets:** 1
-- **High priority:** 0
-- **Medium priority:** 1  
+- **Total targets:** 3
+- **High priority:** 1
+- **Medium priority:** 2  
 - **Low priority:** 0
-- **Estimated campaign value:** $1.17
+- **Estimated campaign value:** $9.85
 
 ## Immediate Actions (Next 24 Hours)
-
+- [ ] Contact drake about high-value node (15 min, expected return: $1.37)
 
 ## Short-term Actions (Next 3 Days)
 

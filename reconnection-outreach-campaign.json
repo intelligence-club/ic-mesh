@@ -1,12 +1,97 @@
 {
   "campaign": {
-    "generated": "2026-02-25T22:04:05.904Z",
-    "totalTargets": 1,
-    "estimatedValue": 1.1700000000000002
+    "generated": "2026-02-27T06:25:56.656Z",
+    "totalTargets": 3,
+    "estimatedValue": 9.845
   },
   "targets": {
-    "high": [],
+    "high": [
+      {
+        "nodeId": "9b6a3b5841dc2890",
+        "name": "miniclaw",
+        "ip": "147.81.132.226",
+        "capabilities": "[\"whisper\",\"ffmpeg\",\"gpu-metal\"]",
+        "models": "[]",
+        "cpuCores": 10,
+        "ramMB": 16384,
+        "ramFreeMB": 582,
+        "cpuIdle": 85,
+        "gpuVRAM": 0,
+        "diskFreeGB": 0,
+        "owner": "drake",
+        "region": "hawaii",
+        "lastSeen": 1772131591521,
+        "registeredAt": 1771899587595,
+        "jobsCompleted": 11,
+        "computeMinutes": 2.3474666666666666,
+        "stripe_account_id": "acct_1T4UGlJ9cZpkvEsI",
+        "payout_email": "drakew@gmail.com",
+        "flags": "{}",
+        "analysis": {
+          "hoursOffline": 12,
+          "daysRegistered": 3,
+          "sessionLength": 3867,
+          "performance": {
+            "successRate": 100,
+            "completed": 7,
+            "total": 7
+          },
+          "capabilities": [
+            "whisper",
+            "ffmpeg",
+            "gpu-metal"
+          ],
+          "estimatedEarnings": 0.7000000000000001,
+          "reconnectionValue": 1.3650000000000002
+        },
+        "score": 84
+      }
+    ],
     "medium": [
+      {
+        "nodeId": "fcecb481aa501e7a",
+        "name": "frigg",
+        "ip": "127.0.0.1",
+        "capabilities": "[\"ollama\",\"whisper\",\"ffmpeg\",\"tesseract\",\"gpu-metal\",\"transcribe\",\"generate\"]",
+        "models": "{\"ollama\":[],\"whisper\":[\"base\",\"large-v3\",\"medium\"]}",
+        "cpuCores": 10,
+        "ramMB": 32768,
+        "ramFreeMB": 11022,
+        "cpuIdle": 87,
+        "gpuVRAM": 0,
+        "diskFreeGB": 36,
+        "owner": "drake",
+        "region": "hawaii",
+        "lastSeen": 1771471380353,
+        "registeredAt": 1772005904137,
+        "jobsCompleted": 43,
+        "computeMinutes": 8.667800000000002,
+        "stripe_account_id": null,
+        "payout_email": "drakew@gmail.com",
+        "flags": "{\"blockedCapabilities\":[\"transcribe\"],\"blockReason\":\"Capability transcribe quarantined due to failures\",\"blockDate\":\"2026-02-25T23:11:55.812Z\",\"quarantined\":false,\"quarantinedAt\":\"2026-02-26T01:41:47.075Z\",\"partiallyQuarantined\":true,\"recoveredAt\":\"2026-02-26T02:44:41.758Z\",\"recoveryType\":\"partial\",\"recoveredCapabilities\":[\"ollama\",\"whisper\",\"ffmpeg\",\"tesseract\",\"gpu-metal\",\"generate\"]}",
+        "analysis": {
+          "hoursOffline": 195,
+          "daysRegistered": 2,
+          "sessionLength": -8909,
+          "performance": {
+            "successRate": 61,
+            "completed": 43,
+            "total": 71
+          },
+          "capabilities": [
+            "ollama",
+            "whisper",
+            "ffmpeg",
+            "tesseract",
+            "gpu-metal",
+            "transcribe",
+            "generate"
+          ],
+          "estimatedEarnings": 4.3,
+          "reconnectionValue": 7.3100000000000005
+        },
+        "score": 65
+      },
       {
         "nodeId": "a47cd29ac23cf10e",
         "name": "frigg",
@@ -21,7 +106,7 @@
         "diskFreeGB": 32,
         "owner": "drake",
         "region": "hawaii",
-        "lastSeen": 1771443140002,
+        "lastSeen": 1771471380353,
         "registeredAt": 1771896835661,
         "jobsCompleted": 6,
         "computeMinutes": 3.4969,
@@ -29,9 +114,9 @@
         "payout_email": "drakew@gmail.com",
         "flags": "{}",
         "analysis": {
-          "hoursOffline": 171,
-          "daysRegistered": 2,
-          "sessionLength": -7562,
+          "hoursOffline": 195,
+          "daysRegistered": 3,
+          "sessionLength": -7091,
           "performance": {
             "successRate": 100,
             "completed": 6,
