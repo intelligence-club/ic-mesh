@@ -1691,6 +1691,145 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---- Network Status ----
+    // ---- Machine Onboarding API (Protocol v2) ----
+    // One endpoint, everything an agent needs to connect a node
+    if (method === 'GET' && pathname === '/api/onboard') {
+      const urlMod = require('url');
+      const query = urlMod.parse(req.url, true).query;
+      const capabilities = (query.capabilities || '').split(',').filter(Boolean);
+      
+      const activeNodes = getActiveNodes();
+      const activeCount = Object.keys(activeNodes).length;
+      
+      // Build config template
+      const hubUrl = process.env.IC_MESH_PUBLIC_URL || `https://moilol.com/mesh`;
+      
+      const configTemplate = {
+        meshServer: hubUrl,
+        nodeName: '${HOSTNAME}',
+        nodeOwner: '${YOUR_NAME}',
+        nodeRegion: 'unknown',
+        limits: { maxCpuPercent: 80, maxRamPercent: 70, maxConcurrentJobs: 3 },
+        handlers: {},
+        schedule: { enabled: false }
+      };
+
+      const envVars = {
+        IC_MESH_SERVER: hubUrl,
+        IC_NODE_NAME: '${HOSTNAME}',
+        IC_NODE_OWNER: '${YOUR_NAME}',
+        IC_NODE_REGION: 'unknown'
+      };
+
+      // Handler YAML URLs for requested capabilities
+      const handlerUrls = {};
+      const knownHandlers = ['whisper', 'ollama', 'stable-diffusion', 'comfyui', 'tesseract'];
+      const requestedCaps = capabilities.length > 0 ? capabilities : knownHandlers;
+      for (const cap of requestedCaps) {
+        if (knownHandlers.includes(cap)) {
+          handlerUrls[cap] = `https://raw.githubusercontent.com/intelligence-club/ic-mesh/main/handlers/${cap}.yaml`;
+        }
+      }
+
+      // Reference benchmark files
+      const benchmarkFiles = {
+        whisper: `${hubUrl}/files/benchmark-whisper-5sec.wav`
+      };
+
+      // Quick-start commands
+      const quickstart = {
+        install: [
+          'git clone https://github.com/intelligence-club/ic-mesh.git',
+          'cd ic-mesh && npm install --production'
+        ],
+        check: 'node client.js --check',
+        start: `IC_MESH_SERVER=${hubUrl} IC_NODE_NAME=$(hostname) IC_NODE_OWNER=YOUR_NAME node client.js`,
+        start_background: `IC_MESH_SERVER=${hubUrl} IC_NODE_NAME=$(hostname) IC_NODE_OWNER=YOUR_NAME nohup node client.js > mesh-node.log 2>&1 &`
+      };
+
+      // API reference for clients (job submission)
+      const clientApi = {
+        submit_job: {
+          method: 'POST',
+          url: `${hubUrl}/jobs`,
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            type: 'transcribe',
+            payload: { url: 'https://example.com/audio.wav' },
+            requirements: { capability: 'whisper' }
+          },
+          note: 'Returns { ok: true, job: { jobId, status } }'
+        },
+        check_job: {
+          method: 'GET',
+          url: `${hubUrl}/jobs/{jobId}`,
+          note: 'Poll until status is "completed" or "failed"'
+        },
+        upload_file: {
+          method: 'POST',
+          url: `${hubUrl}/upload`,
+          content_type: 'multipart/form-data',
+          note: 'Returns { ok: true, url, filename, size }'
+        },
+        estimate: {
+          method: 'POST',
+          url: `${hubUrl}/estimate`,
+          body: { capability: 'whisper', duration_seconds: 60 },
+          note: 'Returns per-node estimates with confidence levels'
+        },
+        nodes: {
+          method: 'GET',
+          url: `${hubUrl}/nodes`,
+          note: 'List all active nodes and their capabilities'
+        },
+        benchmarks: {
+          method: 'GET',
+          url: `${hubUrl}/benchmarks/{nodeId}`,
+          note: 'Benchmark data for a specific node'
+        }
+      };
+
+      return json(res, {
+        protocol: 'IC Mesh Protocol v2.0',
+        hub: hubUrl,
+        network_status: {
+          nodes_active: activeCount,
+          capabilities: [...new Set(Object.values(activeNodes).flatMap(n => n.capabilities))].sort(),
+          accepting_jobs: true
+        },
+        provider: {
+          description: 'Connect your hardware as a compute node',
+          quickstart,
+          config_template: configTemplate,
+          env_vars: envVars,
+          handler_yamls: handlerUrls,
+          benchmark_files: benchmarkFiles,
+          min_node_version: '16',
+          required_packages: ['ws', 'better-sqlite3', 'yaml'],
+          optional_packages: { 'node-fetch': '2.x (only needed for Node < 18)' },
+          revenue_split: '80% operator / 15% treasury / 5% infrastructure',
+          docs: 'https://github.com/intelligence-club/ic-mesh/blob/main/PROTOCOL.md'
+        },
+        client: {
+          description: 'Submit jobs to the mesh network',
+          api: clientApi,
+          pricing: {
+            unit: 'ints (1 int ≈ 1 second of compute)',
+            buy_rate: '$0.001 per int',
+            sell_rate: '$0.0008 per int (operator payout)',
+            example: '60 seconds of transcription ≈ 60 ints ≈ $0.06'
+          },
+          credits: {
+            get_api_key: { method: 'POST', url: 'https://moilol.com/api/keys', body: { email: 'you@example.com' } },
+            buy_credits: { method: 'POST', url: 'https://moilol.com/api/buy-credits', body: { email: 'you@example.com', pack: '5000' } },
+            check_balance: { method: 'GET', url: 'https://moilol.com/api/balance?email=you@example.com' }
+          }
+        },
+        spec: 'https://github.com/intelligence-club/ic-mesh/blob/main/PROTOCOL.md',
+        source: 'https://github.com/intelligence-club/ic-mesh'
+      });
+    }
+
     if (method === 'GET' && pathname === '/status') {
       const active = getActiveNodes();
       const activeCount = Object.keys(active).length;
