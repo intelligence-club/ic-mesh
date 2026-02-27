@@ -1,212 +1,211 @@
 #!/usr/bin/env node
+
 /**
- * IC Mesh Database Maintenance Suite
- * Consolidated tool for database cleanup, analysis, and maintenance
+ * Database Maintenance Utility
+ * Performs routine maintenance tasks on the IC Mesh database
  */
 
 const Database = require('better-sqlite3');
-const path = require('path');
+const fs = require('fs');
 
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, 'mesh.db');
-
-const command = process.argv[2];
-const options = process.argv.slice(3);
-
-if (!command) {
-  console.log('🛠️  IC Mesh Database Maintenance Suite');
-  console.log('');
-  console.log('Usage: node database-maintenance.js <command> [options]');
-  console.log('');
-  console.log('Commands:');
-  console.log('  status          - Show database status and health metrics');
-  console.log('  cleanup-old     - Remove old failed jobs (>30 days)');
-  console.log('  cleanup-orphans - Remove orphaned/abandoned jobs');
-  console.log('  fix-timestamps  - Fix corrupted timestamps');
-  console.log('  vacuum          - Optimize database (VACUUM)');
-  console.log('  analyze         - Update SQLite statistics');
-  console.log('  full-maintenance - Run all maintenance operations');
-  console.log('');
-  console.log('Examples:');
-  console.log('  node database-maintenance.js status');
-  console.log('  node database-maintenance.js cleanup-old');
-  console.log('  node database-maintenance.js full-maintenance');
-  process.exit(1);
-}
-
-console.log('🛠️  IC Mesh Database Maintenance Suite');
-console.log(`Database: ${DB_PATH}`);
-console.log('');
-
-const db = new Database(DB_PATH);
-
-async function showStatus() {
-  console.log('📊 Database Status:');
+function performMaintenance(options = {}) {
+  const db = new Database('./data/mesh.db');
+  const timestamp = new Date().toISOString();
   
-  // Job statistics
-  const jobStats = db.prepare('SELECT status, COUNT(*) as count FROM jobs GROUP BY status ORDER BY count DESC').all();
-  console.log('  Jobs by status:');
-  jobStats.forEach(row => console.log(`    ${row.status}: ${row.count}`));
+  console.log(`🔧 IC Mesh Database Maintenance - ${timestamp.split('T')[0]}`);
+  console.log('═'.repeat(50));
   
-  const totalJobs = jobStats.reduce((sum, row) => sum + row.count, 0);
-  const completedJobs = jobStats.find(row => row.status === 'completed')?.count || 0;
-  const successRate = totalJobs > 0 ? Math.round(100 * completedJobs / totalJobs) : 0;
-  console.log(`  Overall success rate: ${successRate}% (${completedJobs}/${totalJobs})`);
+  let maintenanceLog = [];
   
-  // Node statistics
-  const nodeStats = db.prepare(`
-    SELECT COUNT(*) as total,
-           COUNT(CASE WHEN (strftime('%s','now') - lastSeen) < 300 THEN 1 END) as active
-    FROM nodes
-  `).get();
-  console.log(`  Nodes: ${nodeStats.active}/${nodeStats.total} active (last 5 min)`);
-  
-  // Database file size
   try {
-    const fs = require('fs');
-    const stats = fs.statSync(DB_PATH);
-    const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
-    console.log(`  Database size: ${sizeMB} MB`);
-  } catch (e) {
-    console.log(`  Database size: Unable to determine`);
-  }
-  
-  // Check for issues
-  console.log('\\n🔍 Health Checks:');
-  
-  const currentTime = Math.floor(Date.now() / 1000);
-  const corruptedJobs = db.prepare('SELECT COUNT(*) as count FROM jobs WHERE createdAt > ? OR createdAt < ?').get(currentTime * 2, 1600000000);
-  console.log(`  Corrupted timestamps: ${corruptedJobs.count} jobs`);
-  
-  const oldFailures = db.prepare('SELECT COUNT(*) as count FROM jobs WHERE status = ? AND createdAt < ?').get('failed', currentTime - (30 * 24 * 60 * 60));
-  console.log(`  Old failed jobs: ${oldFailures.count} (>30 days)`);
-  
-  const stuckJobs = db.prepare('SELECT COUNT(*) as count FROM jobs WHERE status = ? AND createdAt < ?').get('pending', currentTime - (24 * 60 * 60));
-  console.log(`  Stuck pending jobs: ${stuckJobs.count} (>24 hours)`);
-}
-
-async function cleanupOld() {
-  console.log('🧹 Cleaning up old failed jobs...');
-  
-  const currentTime = Math.floor(Date.now() / 1000);
-  const thirtyDaysAgo = currentTime - (30 * 24 * 60 * 60);
-  
-  const result = db.prepare('DELETE FROM jobs WHERE status = ? AND createdAt < ?').run('failed', thirtyDaysAgo);
-  console.log(`  Removed ${result.changes} old failed jobs (>30 days)`);
-}
-
-async function cleanupOrphans() {
-  console.log('🧹 Cleaning up orphaned jobs...');
-  
-  const currentTime = Math.floor(Date.now() / 1000);
-  const oneDayAgo = currentTime - (24 * 60 * 60);
-  
-  // Remove pending jobs older than 24 hours (likely abandoned)
-  const pendingResult = db.prepare('DELETE FROM jobs WHERE status = ? AND createdAt < ?').run('pending', oneDayAgo);
-  console.log(`  Removed ${pendingResult.changes} stuck pending jobs (>24 hours)`);
-  
-  // Remove claimed jobs older than 2 hours with no progress (likely node died)
-  const twoHoursAgo = currentTime - (2 * 60 * 60);
-  const claimedResult = db.prepare('DELETE FROM jobs WHERE status = ? AND claimedAt < ?').run('claimed', twoHoursAgo);
-  console.log(`  Removed ${claimedResult.changes} stale claimed jobs (>2 hours)`);
-}
-
-async function fixTimestamps() {
-  console.log('🔧 Fixing corrupted timestamps...');
-  
-  const currentTime = Math.floor(Date.now() / 1000);
-  const recentTime = currentTime - (7 * 24 * 60 * 60); // 7 days ago
-  
-  // Fix jobs with corrupted timestamps
-  const jobResult = db.prepare('UPDATE jobs SET createdAt = ? WHERE createdAt > ? OR createdAt < ?').run(recentTime, currentTime * 2, 1600000000);
-  console.log(`  Fixed ${jobResult.changes} job timestamps`);
-  
-  // Fix nodes with corrupted timestamps  
-  const nodeResult = db.prepare('UPDATE nodes SET lastSeen = ? WHERE lastSeen > ? OR lastSeen < ?').run(recentTime, currentTime * 2, 1600000000);
-  console.log(`  Fixed ${nodeResult.changes} node timestamps`);
-}
-
-async function vacuum() {
-  console.log('📦 Optimizing database (VACUUM)...');
-  
-  const beforeQuery = db.prepare('PRAGMA page_count').get();
-  db.exec('VACUUM');
-  const afterQuery = db.prepare('PRAGMA page_count').get();
-  
-  const pagesSaved = beforeQuery.page_count - afterQuery.page_count;
-  console.log(`  Optimized: ${pagesSaved} pages reclaimed`);
-}
-
-async function analyze() {
-  console.log('📈 Updating database statistics...');
-  
-  db.exec('ANALYZE');
-  console.log(`  Statistics updated for query optimization`);
-}
-
-async function fullMaintenance() {
-  console.log('🔄 Running full database maintenance...');
-  console.log('');
-  
-  await showStatus();
-  console.log('');
-  await fixTimestamps();
-  await cleanupOld();
-  await cleanupOrphans();
-  await analyze();
-  await vacuum();
-  
-  console.log('');
-  console.log('✅ Full maintenance completed');
-  await showStatus();
-}
-
-// Execute command
-(async () => {
-  try {
-    db.exec('BEGIN TRANSACTION;');
+    // 1. Database integrity check
+    console.log(`\n🔍 INTEGRITY CHECK`);
+    console.log('─'.repeat(20));
     
-    switch (command) {
-      case 'status':
-        await showStatus();
-        db.exec('ROLLBACK;'); // Read-only operation
-        break;
-      case 'cleanup-old':
-        await cleanupOld();
-        break;
-      case 'cleanup-orphans':
-        await cleanupOrphans();
-        break;
-      case 'fix-timestamps':
-        await fixTimestamps();
-        break;
-      case 'vacuum':
-        db.exec('ROLLBACK;'); // VACUUM cannot run in transaction
-        await vacuum();
-        db.close();
-        return;
-      case 'analyze':
-        await analyze();
-        break;
-      case 'full-maintenance':
-        await fullMaintenance();
-        break;
-      default:
-        console.log(`❌ Unknown command: ${command}`);
-        process.exit(1);
+    const integrityResult = db.prepare("PRAGMA integrity_check").get();
+    if (integrityResult.integrity_check === 'ok') {
+      console.log(`✅ Database integrity: OK`);
+      maintenanceLog.push(`${timestamp}: Database integrity check passed`);
+    } else {
+      console.log(`❌ Database integrity: ${integrityResult.integrity_check}`);
+      maintenanceLog.push(`${timestamp}: Database integrity issue: ${integrityResult.integrity_check}`);
     }
     
-    if (command !== 'status') {
-      db.exec('COMMIT;');
-      console.log('');
-      console.log('✅ Maintenance completed successfully');
+    // 2. Clean old completed jobs (optional, with safety checks)
+    if (options.cleanOldJobs) {
+      console.log(`\n🧹 CLEANUP OLD JOBS`);
+      console.log('─'.repeat(20));
+      
+      const cutoffDate = Date.now() - (options.retentionDays || 30) * 24 * 60 * 60 * 1000;
+      const oldJobs = db.prepare(`
+        SELECT COUNT(*) as count 
+        FROM jobs 
+        WHERE status = 'completed' 
+        AND completedAt < ?
+      `).get(cutoffDate);
+      
+      if (oldJobs.count > 0) {
+        console.log(`📦 Found ${oldJobs.count} old completed jobs (>${options.retentionDays || 30} days)`);
+        
+        if (options.dryRun) {
+          console.log(`🔍 DRY RUN: Would delete ${oldJobs.count} jobs`);
+          maintenanceLog.push(`${timestamp}: DRY RUN - Would clean ${oldJobs.count} old jobs`);
+        } else {
+          const result = db.prepare(`
+            DELETE FROM jobs 
+            WHERE status = 'completed' 
+            AND completedAt < ?
+          `).run(cutoffDate);
+          
+          console.log(`✅ Cleaned ${result.changes} old completed jobs`);
+          maintenanceLog.push(`${timestamp}: Cleaned ${result.changes} old completed jobs`);
+        }
+      } else {
+        console.log(`✨ No old jobs to clean`);
+      }
     }
+    
+    // 3. Reset stuck jobs (claimed by offline nodes)
+    console.log(`\n🔄 STUCK JOB RECOVERY`);
+    console.log('─'.repeat(20));
+    
+    const stuckJobs = db.prepare(`
+      SELECT j.jobId, j.claimedBy, j.type, 
+             n.lastSeen,
+             (? - n.lastSeen) / (1000 * 60) as minutesOffline
+      FROM jobs j
+      JOIN nodes n ON j.claimedBy = n.nodeId
+      WHERE j.status = 'claimed' 
+      AND n.lastSeen < ?
+    `).all(Date.now(), Date.now() - (10 * 60 * 1000)); // 10 minute threshold
+    
+    if (stuckJobs.length > 0) {
+      console.log(`🚨 Found ${stuckJobs.length} jobs stuck with offline nodes:`);
+      
+      stuckJobs.forEach(job => {
+        console.log(`   ${job.jobId}: ${job.type} (node offline ${Math.round(job.minutesOffline)}min)`);
+      });
+      
+      if (options.resetStuckJobs) {
+        const resetResult = db.prepare(`
+          UPDATE jobs 
+          SET status = 'pending', 
+              claimedBy = NULL, 
+              claimedAt = NULL
+          WHERE status = 'claimed' 
+          AND claimedBy IN (
+            SELECT nodeId FROM nodes 
+            WHERE lastSeen < ?
+          )
+        `).run(Date.now() - (10 * 60 * 1000));
+        
+        console.log(`✅ Reset ${resetResult.changes} stuck jobs to pending`);
+        maintenanceLog.push(`${timestamp}: Reset ${resetResult.changes} stuck jobs`);
+      } else {
+        console.log(`⚠️  Use --reset-stuck-jobs to fix these`);
+      }
+    } else {
+      console.log(`✅ No stuck jobs found`);
+    }
+    
+    // 4. Database statistics
+    console.log(`\n📊 DATABASE STATISTICS`);
+    console.log('─'.repeat(20));
+    
+    const stats = {
+      totalJobs: db.prepare("SELECT COUNT(*) as count FROM jobs").get().count,
+      pendingJobs: db.prepare("SELECT COUNT(*) as count FROM jobs WHERE status = 'pending'").get().count,
+      completedJobs: db.prepare("SELECT COUNT(*) as count FROM jobs WHERE status = 'completed'").get().count,
+      failedJobs: db.prepare("SELECT COUNT(*) as count FROM jobs WHERE status = 'failed'").get().count,
+      totalNodes: db.prepare("SELECT COUNT(*) as count FROM nodes").get().count,
+      activeNodes: db.prepare("SELECT COUNT(*) as count FROM nodes WHERE lastSeen > ?").get(Date.now() - (5 * 60 * 1000)).count
+    };
+    
+    Object.entries(stats).forEach(([key, value]) => {
+      const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+      console.log(`📈 ${label}: ${value}`);
+    });
+    
+    // 5. Database size and optimization
+    console.log(`\n💾 DATABASE OPTIMIZATION`);
+    console.log('─'.repeat(20));
+    
+    const pageCount = db.prepare("PRAGMA page_count").get().page_count;
+    const pageSize = db.prepare("PRAGMA page_size").get().page_size;
+    const dbSizeMB = (pageCount * pageSize) / (1024 * 1024);
+    
+    console.log(`💽 Database size: ${dbSizeMB.toFixed(2)} MB (${pageCount} pages)`);
+    
+    if (options.vacuum) {
+      console.log(`🔧 Running VACUUM to optimize database...`);
+      db.prepare("VACUUM").run();
+      
+      const newPageCount = db.prepare("PRAGMA page_count").get().page_count;
+      const newSizeMB = (newPageCount * pageSize) / (1024 * 1024);
+      const savedMB = dbSizeMB - newSizeMB;
+      
+      console.log(`✅ VACUUM complete: ${newSizeMB.toFixed(2)} MB (saved ${savedMB.toFixed(2)} MB)`);
+      maintenanceLog.push(`${timestamp}: VACUUM completed, saved ${savedMB.toFixed(2)} MB`);
+    }
+    
+    // 6. Write maintenance log
+    if (maintenanceLog.length > 0) {
+      const logFile = './maintenance.log';
+      const logEntry = maintenanceLog.join('\n') + '\n';
+      fs.appendFileSync(logFile, logEntry);
+      console.log(`📝 Maintenance logged to ${logFile}`);
+    }
+    
+    console.log(`\n✅ Maintenance complete - ${new Date().toISOString()}`);
+    console.log('═'.repeat(50));
     
   } catch (error) {
-    db.exec('ROLLBACK;');
-    console.error('❌ Error during maintenance:', error.message);
-    process.exit(1);
+    console.error(`❌ Maintenance error: ${error.message}`);
+    maintenanceLog.push(`${timestamp}: ERROR - ${error.message}`);
   } finally {
     db.close();
   }
-})();
+}
+
+// CLI interface
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  const options = {};
+  
+  // Parse command line options
+  if (args.includes('--clean-old-jobs')) options.cleanOldJobs = true;
+  if (args.includes('--reset-stuck-jobs')) options.resetStuckJobs = true;
+  if (args.includes('--vacuum')) options.vacuum = true;
+  if (args.includes('--dry-run')) options.dryRun = true;
+  
+  const retentionIndex = args.indexOf('--retention-days');
+  if (retentionIndex !== -1 && args[retentionIndex + 1]) {
+    options.retentionDays = parseInt(args[retentionIndex + 1]);
+  }
+  
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`IC Mesh Database Maintenance Utility
+    
+Usage: ./database-maintenance.js [options]
+
+Options:
+  --clean-old-jobs      Clean completed jobs older than retention period
+  --retention-days N    Set retention period (default: 30 days)
+  --reset-stuck-jobs    Reset jobs stuck with offline nodes
+  --vacuum              Optimize database with VACUUM
+  --dry-run             Show what would be done without making changes
+  --help, -h            Show this help message
+
+Examples:
+  ./database-maintenance.js                          # Basic health check
+  ./database-maintenance.js --reset-stuck-jobs       # Fix stuck jobs
+  ./database-maintenance.js --vacuum                 # Optimize database
+  ./database-maintenance.js --clean-old-jobs --retention-days 7  # Clean old jobs
+`);
+    process.exit(0);
+  }
+  
+  performMaintenance(options);
+}
+
+module.exports = { performMaintenance };
