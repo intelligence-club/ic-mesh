@@ -222,10 +222,12 @@ class RetentionMonitor {
             return sessionTime < 60;
         }).length;
         
-        // TODO: Analyze specific error patterns from job history
+        // Analyze specific error patterns from job history
+        const errorPatterns = this.analyzeJobErrorPatterns(riskNodes);
         const commonIssues = [
             { pattern: 'Handler failures', count: lowSuccess },
-            { pattern: 'Zero job claiming', count: zeroJobs }
+            { pattern: 'Zero job claiming', count: zeroJobs },
+            ...errorPatterns
         ].filter(issue => issue.count > 0);
         
         return {
@@ -342,6 +344,40 @@ class RetentionMonitor {
             WHERE registeredAt IS NOT NULL AND lastHeartbeat IS NOT NULL
         `).get();
         return result.avgMinutes || 0;
+    }
+
+    analyzeJobErrorPatterns(riskNodes) {
+        const patterns = [];
+        
+        if (!riskNodes || riskNodes.length === 0) return patterns;
+        
+        // Analyze job failures for risk nodes
+        for (const node of riskNodes) {
+            const jobFailures = this.db.prepare(`
+                SELECT failureReason, COUNT(*) as count
+                FROM jobs 
+                WHERE completedBy = ? AND status = 'failed'
+                GROUP BY failureReason
+                ORDER BY count DESC
+            `).all(node.nodeId);
+            
+            for (const failure of jobFailures) {
+                const existingPattern = patterns.find(p => p.pattern === failure.failureReason);
+                if (existingPattern) {
+                    existingPattern.count += failure.count;
+                } else if (failure.failureReason) {
+                    patterns.push({
+                        pattern: failure.failureReason,
+                        count: failure.count
+                    });
+                }
+            }
+        }
+        
+        // Return top 3 error patterns
+        return patterns
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3);
     }
 }
 
