@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-02-27T08:23:51.480Z",
-  "persistentMinutes": 72.10301666666666,
+  "timestamp": "2026-02-27T08:31:52.120Z",
+  "persistentMinutes": 80.11368333333333,
   "status": {
     "level": "CRITICAL",
     "severity": "COMPLETE_OUTAGE",
-    "message": "COMPLETE SERVICE OUTAGE: 178 jobs pending, 0 customer-capable nodes",
-    "pendingJobs": 178,
+    "message": "COMPLETE SERVICE OUTAGE: 190 jobs pending, 0 customer-capable nodes",
+    "pendingJobs": 190,
     "activeNodes": 0,
     "totalNodes": 5,
     "actions": [
