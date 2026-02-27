@@ -1,0 +1,122 @@
+{
+  "comment": "Auto-generated Kubernetes HPA for IC Mesh",
+  "generated": "2026-02-27T20:57:05.577Z",
+  "hpa_configs": [
+    {
+      "apiVersion": "autoscaling/v2",
+      "kind": "HorizontalPodAutoscaler",
+      "metadata": {
+        "name": "ic-mesh-transcription_capacity_scaling",
+        "namespace": "ic-mesh"
+      },
+      "spec": {
+        "scaleTargetRef": {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "name": "ic-mesh-node-whisper"
+        },
+        "minReplicas": 1,
+        "maxReplicas": 10,
+        "metrics": [
+          {
+            "type": "External",
+            "external": {
+              "metric": {
+                "name": "ic_mesh_queue_depth",
+                "selector": {
+                  "matchLabels": {
+                    "job_type": "transcribe"
+                  }
+                }
+              },
+              "target": {
+                "type": "Value",
+                "value": "20"
+              }
+            }
+          }
+        ],
+        "behavior": {
+          "scaleUp": {
+            "stabilizationWindowSeconds": 600,
+            "policies": [
+              {
+                "type": "Percent",
+                "value": 100,
+                "periodSeconds": 60
+              }
+            ]
+          },
+          "scaleDown": {
+            "stabilizationWindowSeconds": 1200,
+            "policies": [
+              {
+                "type": "Percent",
+                "value": 25,
+                "periodSeconds": 180
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "autoscaling/v2",
+      "kind": "HorizontalPodAutoscaler",
+      "metadata": {
+        "name": "ic-mesh-general_queue_management",
+        "namespace": "ic-mesh"
+      },
+      "spec": {
+        "scaleTargetRef": {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "name": "ic-mesh-node-general"
+        },
+        "minReplicas": 1,
+        "maxReplicas": 15,
+        "metrics": [
+          {
+            "type": "External",
+            "external": {
+              "metric": {
+                "name": "ic_mesh_queue_depth",
+                "selector": {
+                  "matchLabels": {
+                    "job_type": "all"
+                  }
+                }
+              },
+              "target": {
+                "type": "Value",
+                "value": "10"
+              }
+            }
+          }
+        ],
+        "behavior": {
+          "scaleUp": {
+            "stabilizationWindowSeconds": 900,
+            "policies": [
+              {
+                "type": "Percent",
+                "value": 100,
+                "periodSeconds": 60
+              }
+            ]
+          },
+          "scaleDown": {
+            "stabilizationWindowSeconds": 1800,
+            "policies": [
+              {
+                "type": "Percent",
+                "value": 25,
+                "periodSeconds": 180
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-02-27T20:54:23.647Z",
+  "campaignFile": "retention-campaign/campaign-overview.json",
+  "summary": {
+    "totalTargets": 3,
+    "reconnected": 3,
+    "stillOffline": 0,
+    "currentlyActive": 0,
+    "reconnectionRate": "100.0%",
+    "totalNewJobs": 0,
+    "avgNewJobsPerReconnection": "0.0"
+  },
+  "details": [
+    {
+      "nodeId": "a47cd29ac23cf10e",
+      "name": "frigg",
+      "lastSeenAtCampaign": 1771966463647,
+      "jobsAtCampaign": 6,
+      "currentLastSeen": 1771990078565,
+      "status": "reconnected",
+      "newJobsCompleted": 0,
+      "daysSinceReconnection": 3,
+      "isCurrentlyActive": false
+    },
+    {
+      "nodeId": "9b6a3b5841dc2890",
+      "name": "miniclaw",
+      "lastSeenAtCampaign": 1771966463647,
+      "jobsAtCampaign": 5,
+      "currentLastSeen": 1771990098989,
+      "status": "reconnected",
+      "newJobsCompleted": 0,
+      "daysSinceReconnection": 3,
+      "isCurrentlyActive": false
+    },
+    {
+      "nodeId": "58bc900266e83670",
+      "name": "intelligence-club-prime",
+      "lastSeenAtCampaign": 1771880063647,
+      "jobsAtCampaign": 0,
+      "currentLastSeen": 1771891964685,
+      "status": "reconnected",
+      "newJobsCompleted": 0,
+      "daysSinceReconnection": 4,
+      "isCurrentlyActive": false
+    }
+  ]
+}

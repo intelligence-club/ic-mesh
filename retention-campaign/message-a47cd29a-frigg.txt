@@ -1,0 +1,21 @@
+Hi frigg,
+
+Your node "frigg" was a valuable contributor to IC Mesh - you completed 6 jobs and earned compute credits!
+
+🎨 Your GPU capabilities (gpu-metal, stable-diffusion) are especially valuable right now. We're seeing growing demand for image generation and GPU-accelerated tasks.
+
+📈 Network Update (since you've been offline 3 days):
+• Revenue has grown to $771+ with 80+ jobs completed
+• New job types available matching your capabilities: ffmpeg, gpu-metal, stable-diffusion
+• Founding operator benefits still available (2x earnings, priority routing)
+
+🚀 Quick Reconnection:
+Just restart your IC Mesh client - your nodeId and earnings are preserved.
+All your previous configuration should work automatically.
+
+💰 Consider setting up automatic payouts via Stripe Connect for seamless earnings.
+
+Questions or need help getting back online? Happy to help!
+
+Dashboard: https://moilol.com/operate.html
+Setup: https://github.com/intelligence-club/ic-mesh/blob/main/JOIN.md

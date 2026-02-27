@@ -74,15 +74,13 @@
       "alertId": "58bc900266e83670_3d"
     }
   ],
-  "lastCheck": 1772225110703,
+  "lastCheck": 1772227784485,
   "summary": {
-    "totalNodes": 10,
-    "activeNodes": 6,
+    "totalNodes": 11,
+    "activeNodes": 7,
     "offlineNodes": 4,
-    "criticalAlertsGenerated": 3,
+    "criticalAlertsGenerated": 0,
     "criticalCapabilities": [
-      "tesseract",
-      "transcribe",
       "transcription",
       "gpu-metal",
       "stable-diffusion",
@@ -92,11 +90,11 @@
     ],
     "capabilityCount": {
       "test": 2,
-      "ffmpeg": 6,
-      "tesseract": 2,
-      "whisper": 3,
-      "transcribe": 2,
       "transcription": 1,
+      "ffmpeg": 7,
+      "tesseract": 3,
+      "whisper": 4,
+      "transcribe": 3,
       "gpu-metal": 2,
       "stable-diffusion": 1,
       "browser": 1,
