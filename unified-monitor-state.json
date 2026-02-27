@@ -1,0 +1,28 @@
+{
+  "lastCheck": "2026-02-27T11:57:51.570Z",
+  "alertHistory": [],
+  "performanceBaseline": null,
+  "trends": {
+    "capacity": [
+      {
+        "timestamp": 1772193471575,
+        "activeNodes": 1,
+        "utilization": 0
+      }
+    ],
+    "health": [
+      {
+        "timestamp": 1772193471575,
+        "score": 70,
+        "successRate": 1
+      }
+    ],
+    "queue": [
+      {
+        "timestamp": 1772193471575,
+        "pending": 22,
+        "processing": 0
+      }
+    ]
+  }
+}
