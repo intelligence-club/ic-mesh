@@ -1,12 +1,22 @@
 [
   {
     "type": "LONG_OFFLINE",
-    "node": "frigg",
-    "message": "Node offline for 8 days - consider reaching out to operator"
+    "node": "miniclaw",
+    "message": "Node offline for 2 days - consider reaching out to operator"
   },
   {
     "type": "LONG_OFFLINE",
     "node": "frigg",
-    "message": "Node offline for 8 days - consider reaching out to operator"
+    "message": "Node offline for 2 days - consider reaching out to operator"
+  },
+  {
+    "type": "LONG_OFFLINE",
+    "node": "openclaw-pi",
+    "message": "Node offline for 3 days - consider reaching out to operator"
+  },
+  {
+    "type": "LONG_OFFLINE",
+    "node": "intelligence-club-prime",
+    "message": "Node offline for 3 days - consider reaching out to operator"
   }
 ]
