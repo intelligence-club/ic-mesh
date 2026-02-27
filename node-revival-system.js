@@ -18,7 +18,7 @@ const path = require('path');
 
 class NodeRevivalSystem {
     constructor() {
-        this.dbPath = './mesh.db';
+        this.dbPath = './data/mesh.db';
         this.revivalLogPath = './revival-attempts.json';
         this.loadRevivalLog();
     }
@@ -67,14 +67,14 @@ class NodeRevivalSystem {
                     nodeId,
                     name,
                     registeredAt,
-                    lastHeartbeat,
+                    lastSeen,
                     capabilities,
                     jobsCompleted,
                     (SELECT COUNT(*) FROM jobs WHERE jobs.claimedBy = nodes.nodeId AND jobs.status = 'completed') as completedJobs,
                     (SELECT COUNT(*) FROM jobs WHERE jobs.claimedBy = nodes.nodeId AND jobs.status = 'failed') as failedJobs,
-                    CAST((julianday('now') - julianday(datetime(lastHeartbeat/1000, 'unixepoch'))) * 1440 AS INTEGER) as minutesOffline
+                    CAST((julianday('now') - julianday(datetime(lastSeen/1000, 'unixepoch'))) * 1440 AS INTEGER) as minutesOffline
                 FROM nodes 
-                ORDER BY lastHeartbeat DESC
+                ORDER BY lastSeen DESC
             `;
             
             this.db.all(query, (err, nodes) => {
@@ -200,7 +200,7 @@ Your IC Mesh node "${node.name || node.nodeId}" has been offline for ${Math.roun
 
 ${totalJobs > 0 ? `Past performance:
 • ${node.completedJobs} jobs completed (${successRate}% success rate)  
-• Last active: ${new Date(node.lastHeartbeat).toLocaleDateString()}
+• Last active: ${new Date(node.lastSeen).toLocaleDateString()}
 • Capabilities: ${node.capabilities || 'basic'}` : 'This node was registered but never started processing jobs.'}
 
 Current network opportunity:
