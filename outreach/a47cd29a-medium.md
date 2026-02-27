@@ -4,7 +4,7 @@
 - **Priority:** MEDIUM
 - **Score:** 61/100
 - **Owner:** drake
-- **Offline:** 195 hours
+- **Offline:** 202 hours
 - **Success Rate:** 100%
 - **Jobs Completed:** 6
 - **Capabilities:** ffmpeg, gpu-metal, stable-diffusion
@@ -15,7 +15,7 @@
 
 Hi drake,
 
-Your IC Mesh node (a47cd29a) has been offline for 195 hours.
+Your IC Mesh node (a47cd29a) has been offline for 202 hours.
 
 Since you've been away:
 • Network capacity has been reduced
@@ -47,4 +47,4 @@ IC Mesh Network Team
 - Setup assistance available
 
 ---
-*Generated on 2026-02-27T06:25:56.661Z by Operator Reconnection Outreach Tool*
+*Generated on 2026-02-27T13:41:26.610Z by Operator Reconnection Outreach Tool*

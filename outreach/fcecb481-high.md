@@ -1,13 +1,13 @@
-# Reconnection Outreach - Node 9b6a3b58
+# Reconnection Outreach - Node fcecb481
 
 ## Target Analysis
 - **Priority:** HIGH
-- **Score:** 84/100
+- **Score:** 85/100
 - **Owner:** drake
-- **Offline:** 19 hours
+- **Offline:** 202 hours
 - **Success Rate:** 100%
-- **Jobs Completed:** 7
-- **Capabilities:** whisper, ffmpeg, gpu-metal
+- **Jobs Completed:** 30
+- **Capabilities:** ollama, whisper, ffmpeg, tesseract, gpu-metal, transcribe, generate
 
 ## Personalized Message
 
@@ -15,12 +15,12 @@
 
 Hi drake,
 
-I noticed your IC Mesh node (9b6a3b58) went offline 19 hours ago. 
+I noticed your IC Mesh node (fcecb481) went offline 202 hours ago. 
 
 Your node was one of our top performers:
 • 100% success rate
-• 7 jobs completed successfully
-• Valuable capabilities: whisper, ffmpeg, gpu-metal
+• 30 jobs completed successfully
+• Valuable capabilities: ollama, whisper, ffmpeg, tesseract, gpu-metal, transcribe, generate
 
 The network has been missing your reliable capacity. While offline, 
 you've potentially missed $NaN in earnings.
@@ -43,8 +43,8 @@ IC Mesh Network Team
 4. Track response and update campaign metrics
 
 ## Technical Support Ready
-- Diagnostic command: `node tools/comprehensive-node-diagnosis.js 9b6a3b5841dc2890`
-- Common issues: general connectivity
+- Diagnostic command: `node tools/comprehensive-node-diagnosis.js fcecb481aa501e7a`
+- Common issues: connection stability
 - Setup assistance available
 
 ---
