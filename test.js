@@ -168,7 +168,7 @@ suite.test('GET /nodes returns nodes data', async () => {
 
 suite.test('POST /nodes/register creates a node', async () => {
   const nodeData = {
-    nodeId: 'test-node-' + Date.now(),
+    name: 'test-node-' + Date.now(),
     capabilities: ['transcription'],
     reputation: 1000,
     location: 'test'
@@ -276,8 +276,9 @@ suite.test('POST /jobs with invalid task type', async () => {
 
 suite.test('Job claiming workflow', async () => {
   // Create a node first with a truly unique ID
+  const nodeName = 'claiming-node-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
   const nodeData = {
-    nodeId: 'claiming-node-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+    name: nodeName,
     capabilities: ['transcription'],
     reputation: 1000,
     location: 'test'
@@ -314,8 +315,9 @@ suite.test('Job claiming workflow', async () => {
 
 suite.test('Job completion workflow', async () => {
   // Create a node with a truly unique ID
+  const nodeName = 'completion-node-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
   const nodeData = {
-    nodeId: 'completion-node-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+    name: nodeName,
     capabilities: ['transcription'],
     reputation: 1000,
     location: 'test'
@@ -361,16 +363,17 @@ suite.test('Job completion workflow', async () => {
 });
 
 suite.test('Ledger balance tracking', async () => {
-  const nodeId = 'ledger-node-' + Date.now();
+  const nodeName = 'ledger-node-' + Date.now();
   
   // Register node
   const nodeData = {
-    nodeId,
+    name: nodeName,
     capabilities: ['transcription'],
     reputation: 1000,
     location: 'test'
   };
-  await suite.request('POST', '/nodes/register', nodeData);
+  const registerRes = await suite.request('POST', '/nodes/register', nodeData);
+  const nodeId = registerRes.data.node.nodeId;
 
   // Check initial balance (should be 0 or not exist)
   const balanceRes = await suite.request('GET', `/ledger/${nodeId}`);
@@ -378,9 +381,9 @@ suite.test('Ledger balance tracking', async () => {
 });
 
 suite.test('Node duplicate registration handling', async () => {
-  const nodeId = 'duplicate-node-' + Date.now();
+  const nodeName = 'duplicate-node-' + Date.now();
   const nodeData = {
-    nodeId,
+    name: nodeName,
     capabilities: ['transcription'],
     reputation: 1000,
     location: 'test'
@@ -390,7 +393,7 @@ suite.test('Node duplicate registration handling', async () => {
   const firstRes = await suite.request('POST', '/nodes/register', nodeData);
   suite.assertEqual(firstRes.status, 200, 'First registration should succeed');
 
-  // Second registration with same nodeId
+  // Second registration with same name
   const secondRes = await suite.request('POST', '/nodes/register', nodeData);
   suite.assertEqual(secondRes.status, 200, 'Should handle duplicate registration gracefully');
 });
