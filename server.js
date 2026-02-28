@@ -185,7 +185,7 @@ db.exec(`
     nodeId TEXT NOT NULL UNIQUE,
     slot_number INTEGER NOT NULL UNIQUE,
     joined_at INTEGER NOT NULL,
-    email TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
     benefits TEXT DEFAULT '{}',
     status TEXT DEFAULT 'active',
     created_at INTEGER DEFAULT (strftime('%s', 'now'))
