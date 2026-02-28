@@ -916,7 +916,9 @@ const server = http.createServer(async (req, res) => {
   
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Node-Id, X-Node-Secret');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Node-Id, X-Node-Secret, X-Api-Key, Authorization');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
   if (method === 'OPTIONS') { res.writeHead(204); return res.end(); }
 
   // Rate limiting - proxy-aware IP detection
