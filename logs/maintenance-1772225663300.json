@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-02-27T20:54:23.300Z",
+  "duration": "0s",
+  "summary": {
+    "tasksCompleted": 5,
+    "warnings": 1,
+    "errors": 0
+  },
+  "metrics": {
+    "database": {
+      "before": {
+        "total": 5,
+        "failed": 0,
+        "completed": 0
+      },
+      "after": {
+        "total": 5,
+        "failed": 0,
+        "completed": 0
+      },
+      "cleaned": 0
+    },
+    "health": {
+      "api": {
+        "responseTime": 15,
+        "status": "healthy"
+      },
+      "database": {
+        "status": "healthy",
+        "jobCount": 5
+      },
+      "disk": {
+        "availableGB": 24.1,
+        "status": "healthy"
+      },
+      "memory": {
+        "totalMB": 1968,
+        "usedMB": 1036,
+        "availableMB": 931,
+        "usagePercent": 53,
+        "status": "healthy"
+      }
+    }
+  },
+  "warnings": [
+    "Security issue: node-config.json is readable by others (permissions: 100644)"
+  ],
+  "errors": [],
+  "dryRun": false
+}

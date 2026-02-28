@@ -1083,8 +1083,16 @@ async function checkForUpdates() {
       return;
     }
 
+    if (process.env.IC_NO_AUTO_UPDATE === '1') {
+      console.log('  ⏭ Auto-update disabled (IC_NO_AUTO_UPDATE=1)');
+      return;
+    }
+
     console.log('  ↓ Pulling...');
+    // Stash local changes before pulling to avoid conflicts
+    try { execSync('git stash --quiet', { cwd: __dirname, timeout: 10000 }); } catch {}
     execSync('git pull origin main --quiet', { cwd: __dirname, timeout: 30000 });
+    try { execSync('git stash pop --quiet', { cwd: __dirname, timeout: 10000 }); } catch {}
     console.log('  ✓ Updated. Restarting...\n');
 
     const child = spawn(process.argv[0], process.argv.slice(1), {
