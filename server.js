@@ -1308,12 +1308,15 @@ const server = http.createServer(async (req, res) => {
             kr.end(JSON.stringify({ key: apiKey }));
           });
           if (!keyCheck.valid) {
-            // Allow through for now during beta, but log
-            logger.info(`Unvalidated API key: ${apiKey.slice(0, 8)}`, {
+            logger.warn(`Invalid API key rejected: ${apiKey.slice(0, 8)}`, {
               ip: clientIp,
-              status: 'unvalidated_but_allowed',
-              phase: 'beta'
+              status: 'invalid_key_rejected'
             });
+            return json(res, { 
+              error: 'Invalid API key', 
+              code: 'INVALID_API_KEY',
+              signup: 'https://moilol.com/account.html'
+            }, 401);
           }
         } catch {}
       }
