@@ -446,12 +446,14 @@ function registerNode(data, reqHeaders, rawBody) {
   const ip = data.ip || 'unknown';
   
   // Rate limiting: prevent rapid registrations from same IP
+  // Allow higher limits for localhost (for testing)
+  const maxRegistrations = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' ? 50 : 10;
   const recentRegistrations = db.prepare(`
     SELECT COUNT(*) as count FROM nodes 
     WHERE ip = ? AND registeredAt > ?
   `).get(ip, Date.now() - 300000); // 5 minutes
   
-  if (recentRegistrations.count >= 10) {
+  if (recentRegistrations.count >= maxRegistrations) {
     logger.error('registration-rate-limit', `Too many registrations from IP ${ip}`, { ip, count: recentRegistrations.count });
     throw new Error('Registration rate limit exceeded. Please wait before registering more nodes.');
   }
@@ -2252,7 +2254,14 @@ const server = http.createServer(async (req, res) => {
 
     // ---- List tickets (admin only) ----
     if (method === 'GET' && pathname === '/api/tickets') {
-      if (req.headers['x-admin-key'] !== (process.env.ADMIN_KEY)) {
+      const providedKey = req.headers['x-admin-key'];
+      const expectedKey = process.env.ADMIN_KEY;
+      
+      if (!expectedKey) {
+        return json(res, { error: 'Admin key not configured', detail: 'Server misconfiguration', help: 'Contact system administrator' }, 500);
+      }
+      
+      if (!providedKey || providedKey !== expectedKey) {
         return json(res, { error: 'Admin authorization required for ticket access', detail: 'Valid X-Admin-Key header required', help: 'Contact system administrator for access credentials' }, 401);
       }
       
