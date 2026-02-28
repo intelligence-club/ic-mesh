@@ -1370,6 +1370,7 @@ if (process.argv.includes('--check')) {
     
     console.log(`\n  Total capabilities: ${caps.length} → ${caps.join(', ')}`);
     console.log(`  ${caps.length > 0 ? '✅ Ready to connect. Run: node client.js' : '❌ No capabilities detected.'}\n`);
+    process.exit(0);
   })();
 } else {
   main().catch(console.error);
