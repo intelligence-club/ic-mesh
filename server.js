@@ -1063,7 +1063,12 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       const { capability, duration_seconds, file_size_mb, model, affinity_key } = data;
       
-      if (!capability) return json(res, { error: 'capability is required' }, 400);
+      if (!capability) return json(res, { 
+        error: 'capability is required', 
+        detail: 'Specify what type of job you want to estimate', 
+        valid_capabilities: [...registeredTypes].sort(),
+        example: { capability: 'transcribe', duration_seconds: 300, file_size_mb: 10 }
+      }, 400);
       
       const cutoff = Date.now() - 120000;
       const activeNodes = stmts.getActiveNodes.all(cutoff);
@@ -1578,10 +1583,20 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       const { nodeId, amount_ints, payout_email } = data;
 
-      if (!nodeId) return json(res, { error: 'nodeId required' }, 400);
+      if (!nodeId) return json(res, { 
+        error: 'nodeId required', 
+        detail: 'Include your node identifier to request cashout',
+        example: { nodeId: 'your-node-id', amount_ints: 1000 },
+        help: 'Find your nodeId in the operator dashboard at /operate/:nodeId'
+      }, 400);
 
       const entry = stmts.getPayout.get(nodeId);
-      if (!entry) return json(res, { error: 'No earnings found for this node' }, 404);
+      if (!entry) return json(res, { 
+        error: 'No earnings found for this node', 
+        detail: `Node ${nodeId} has not completed any paid jobs yet`,
+        suggestion: 'Complete some jobs first to earn payouts',
+        help: 'Check your node connection and available jobs at /jobs/available'
+      }, 404);
 
       const available = entry.earned_ints - (entry.cashed_out_ints || 0);
       const requestedInts = amount_ints ? Math.min(parseInt(amount_ints), available) : available;
