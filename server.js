@@ -1294,11 +1294,32 @@ const server = http.createServer(async (req, res) => {
         return json(res, { error: `Unknown job type '${data.type}'. Known types: ${[...registeredTypes].sort().join(', ')}`, valid_types: [...registeredTypes].sort() }, 400);
       }
       if (!data.payload || typeof data.payload !== 'object') {
+        const examples = {
+          ping: { type: 'ping', payload: { target: 'test' } },
+          transcribe: { type: 'transcribe', payload: { url: 'https://example.com/audio.wav' }, requirements: { capability: 'whisper' } },
+          ocr: { type: 'ocr', payload: { url: 'https://example.com/image.png' }, requirements: { capability: 'tesseract' }, note: 'Must be an image file (PNG/JPG/TIFF/BMP)' },
+          ffmpeg: { type: 'ffmpeg', payload: { url: 'https://example.com/video.mp4' }, requirements: { capability: 'ffmpeg' } }
+        };
         return json(res, { 
           error: 'Job payload must be an object', 
           detail: 'Provide job-specific parameters in the payload field',
-          example: { type: 'transcribe', payload: { audio_url: 'https://example.com/audio.wav', language: 'en' } }
+          example: examples[data.type] || { type: data.type, payload: { url: 'https://example.com/file' } }
         }, 400);
+      }
+      
+      // Capability-specific payload validation
+      const cap = data.requirements?.capability;
+      if (cap === 'tesseract' || data.type === 'ocr') {
+        if (data.payload.url) {
+          const ext = data.payload.url.split('?')[0].split('.').pop().toLowerCase();
+          if (!['png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp', 'webp', 'gif'].includes(ext)) {
+            return json(res, {
+              error: `OCR requires an image file, got .${ext}`,
+              detail: 'Tesseract accepts: PNG, JPG, TIFF, BMP, WebP, GIF',
+              suggestion: 'Upload an image file and use the returned URL in payload.url'
+            }, 400);
+          }
+        }
       }
       
       // SECURITY: Validate price_ints in payload to prevent payment manipulation
@@ -1773,7 +1794,13 @@ const server = http.createServer(async (req, res) => {
             payload: { url: 'https://example.com/audio.wav' },
             requirements: { capability: 'whisper' }
           },
-          note: 'Returns { ok: true, job: { jobId, status } }'
+          note: 'Returns { ok: true, job: { jobId, status } }',
+          examples: {
+            ping: { type: 'ping', payload: { target: 'test' }, requirements: {} },
+            ocr: { type: 'ocr', payload: { url: 'https://example.com/image.png' }, requirements: { capability: 'tesseract' }, note: 'Input MUST be an image (PNG/JPG/TIFF/BMP), not text' },
+            transcribe: { type: 'transcribe', payload: { url: 'https://example.com/audio.wav' }, requirements: { capability: 'whisper' } },
+            ffmpeg: { type: 'ffmpeg', payload: { url: 'https://example.com/video.mp4' }, requirements: { capability: 'ffmpeg' }, note: 'Returns ffprobe JSON info. For conversion, add payload.command' }
+          }
         },
         check_job: {
           method: 'GET',

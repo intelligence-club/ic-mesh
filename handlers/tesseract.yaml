@@ -9,7 +9,15 @@ detect:
   probe_cmd: "tesseract --version"
 
 invoke:
-  cmd: "tesseract {input} {output_dir}/output -l eng"
+  cmd: |
+    LANG_FLAG=""
+    if tesseract --list-langs 2>&1 | grep -q eng; then
+      LANG_FLAG="-l eng"
+    fi
+    tesseract "{input}" "{output_dir}/output" $LANG_FLAG 2>&1 || {
+      echo "Error: tesseract failed. Ensure input is a valid image (PNG, JPG, TIFF, BMP)." >&2
+      exit 1
+    }
   output: file
   output_file: "{output_dir}/output.txt"
   result_type: text

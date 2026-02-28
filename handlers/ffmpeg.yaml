@@ -1,0 +1,37 @@
+# FFmpeg — audio/video conversion and processing
+capability: ffmpeg
+namespace: ffmpeg
+aliases: [convert, transcode]
+description: "Audio/video conversion via FFmpeg"
+
+detect:
+  binary: ffmpeg
+  probe_cmd: "ffmpeg -version"
+
+invoke:
+  # Accepts payload.command for custom ffmpeg commands, or converts input to target format
+  cmd: |
+    if [ -n "$FFMPEG_COMMAND" ]; then
+      # Custom command from payload
+      eval "$FFMPEG_COMMAND"
+    elif [ -n "{input}" ] && [ -f "{input}" ]; then
+      # Default: probe the file and return info
+      ffprobe -v quiet -print_format json -show_format -show_streams "{input}" > "{output_dir}/output.json" 2>&1
+      if [ $? -ne 0 ]; then
+        echo "Error: ffprobe failed on input file" >&2
+        exit 1
+      fi
+    else
+      echo "Error: No input file or command provided. Use payload.url for file input or payload.command for custom ffmpeg commands." >&2
+      exit 1
+    fi
+  env:
+    FFMPEG_COMMAND: ""
+  output: file
+  output_file: "{output_dir}/output.json"
+  result_type: json
+
+resources:
+  timeout: 300
+  max_input_mb: 500
+  concurrent: 2
