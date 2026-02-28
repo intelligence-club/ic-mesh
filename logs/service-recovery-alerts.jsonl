@@ -1,6 +1,0 @@
-{"timestamp":"2026-02-27T15:09:34.380Z","type":"service_outage","priority":"CRITICAL","title":"🚨 Complete Service Outage","message":"All nodes offline - service completely unavailable","details":[]}
-{"timestamp":"2026-02-27T15:09:34.381Z","type":"health_critical","priority":"HIGH","title":"⚠️  System Health Critical","message":"Health score: 13/100","details":[]}
-{"timestamp":"2026-02-27T15:09:34.383Z","type":"missing_capabilities","priority":"HIGH","title":"🔧 Critical Capabilities Missing","message":"Missing: transcribe, whisper, ocr, pdf-extract","details":[]}
-{"timestamp":"2026-02-27T15:34:39.753Z","type":"service_outage","priority":"CRITICAL","title":"🚨 Complete Service Outage","message":"All nodes offline - service completely unavailable","details":[]}
-{"timestamp":"2026-02-27T15:34:39.756Z","type":"health_critical","priority":"HIGH","title":"⚠️  System Health Critical","message":"Health score: 6/100","details":[]}
-{"timestamp":"2026-02-27T15:34:39.756Z","type":"missing_capabilities","priority":"HIGH","title":"🔧 Critical Capabilities Missing","message":"Missing: transcribe, whisper, ocr, pdf-extract","details":[]}
