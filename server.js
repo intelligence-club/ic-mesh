@@ -28,6 +28,7 @@ const path = require('path');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { WebSocketServer, WebSocket } = require('ws');
+const { validateDbPath } = require('./lib/db-utils');
 
 const storage = require('./lib/storage');
 const connect = require('./lib/stripe-connect');
@@ -67,7 +68,12 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ===== DATABASE =====
-const db = new Database(DB_PATH);
+const validDbPath = validateDbPath(DB_PATH);
+if (!validDbPath) {
+  console.error('🚨 SECURITY: Invalid database path provided');
+  process.exit(1);
+}
+const db = new Database(validDbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
 

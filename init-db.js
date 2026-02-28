@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 
 const Database = require('better-sqlite3');
+const { validateDbPath } = require('./lib/db-utils');
 
 const DB_PATH = './mesh.db';
-const db = new Database(DB_PATH);
+const validDbPath = validateDbPath(DB_PATH);
+if (!validDbPath) {
+  console.error('🚨 SECURITY: Invalid database path provided');
+  process.exit(1);
+}
+const db = new Database(validDbPath);
 
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
