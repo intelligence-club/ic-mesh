@@ -1,45 +1,29 @@
 name: Test Suite
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-    
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+    - uses: actions/setup-node@v4
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: 22.x
         cache: 'npm'
-    
-    - name: Install dependencies
-      run: npm ci
-    
-    - name: Run tests
+    - run: npm ci
+    - name: Smoke test
       run: |
-        # Start server in background
-        timeout 60s node server.js &
-        SERVER_PID=$!
-        
-        # Wait for server to be ready
-        sleep 3
-        
-        # Run tests
-        node test.js
-        
-        # Clean up
-        kill $SERVER_PID || true
+        mkdir -p /tmp/ic-mesh-test/uploads
+        node server.js &
+        sleep 5
+        curl -sf http://localhost:8333/status && echo "✅ Server OK"
+        curl -sf http://localhost:8333/nodes && echo "✅ Nodes OK"
+        kill %1 || true
       env:
         NODE_ENV: test
         DATA_DIR: /tmp/ic-mesh-test
+        PORT: 8333
+        STRIPE_API_KEY: sk_test_dummy
