@@ -1732,7 +1732,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname.match(/^\/cashouts\/\d+\/process$/)) {
       const cashoutId = pathname.split('/')[2];
       const data = await parseBody(req);
-      if (req.headers['x-admin-key'] !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
+      if (req.headers['x-admin-key'] !== (process.env.ADMIN_KEY)) {
         return json(res, { error: 'Admin authorization required for cashout processing', detail: 'Valid X-Admin-Key header required', help: 'Contact system administrator for access credentials' }, 401);
       }
       db.prepare(`UPDATE cashouts SET status = ?, processed = datetime('now'), payout_method = ? WHERE id = ?`).run(
@@ -2222,7 +2222,7 @@ const server = http.createServer(async (req, res) => {
     // ---- List tickets (admin only) ----
     if (method === 'GET' && pathname === '/api/tickets') {
       const adminKey = req.headers['x-admin-key'] || req.headers['authorization']?.replace('Bearer ', '');
-      if (adminKey !== (process.env.ADMIN_KEY || 'ic-admin-2026')) {
+      if (adminKey !== (process.env.ADMIN_KEY)) {
         return json(res, { error: 'Admin authorization required for ticket access', detail: 'Valid X-Admin-Key or Authorization Bearer token required', help: 'Contact system administrator for access credentials' }, 401);
       }
       
