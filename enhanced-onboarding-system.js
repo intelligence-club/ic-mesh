@@ -477,6 +477,28 @@ class OnboardingSession {
     }
     
     async checkCommand(command) {
+        // Allowlist of safe commands to prevent command injection
+        const allowedCommands = [
+            'whisper --help',
+            'whisper --version', 
+            'ollama --version',
+            'ollama --help',
+            'tesseract --version',
+            'tesseract --help',
+            'ffmpeg -version',
+            'python3 --version'
+        ];
+        
+        // Check if command starts with any allowed pattern
+        const isAllowed = allowedCommands.some(allowed => 
+            command === allowed || 
+            (command.startsWith('python3 -c "import ') && command.endsWith('"'))
+        );
+        
+        if (!isAllowed) {
+            throw new Error(`Command not allowed: ${command}`);
+        }
+        
         return new Promise((resolve, reject) => {
             const { exec } = require('child_process');
             exec(command, (error) => {
