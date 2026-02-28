@@ -32,6 +32,7 @@ if (!globalThis.fetch) {
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync, spawn } = require('child_process');
 const WebSocket = require('ws');
 const { scanCapabilities, executeFromSpec, loadHandlerSpecs, detectCapability } = require('./lib/handler-loader');
@@ -209,6 +210,41 @@ function loadNodeId() {
 function saveNodeId(id) {
   try { fs.writeFileSync(NODE_ID_FILE, id); } catch {}
 }
+
+// ===== Ed25519 Node Identity =====
+const NODE_KEY_FILE = path.join(__dirname, '.node-key');
+const NODE_PUBKEY_FILE = path.join(__dirname, '.node-pubkey');
+
+function loadOrCreateKeyPair() {
+  try {
+    const privPem = fs.readFileSync(NODE_KEY_FILE, 'utf8');
+    const pubPem = fs.readFileSync(NODE_PUBKEY_FILE, 'utf8');
+    return {
+      privateKey: crypto.createPrivateKey(privPem),
+      publicKey: pubPem.trim()
+    };
+  } catch {}
+  // Generate new ed25519 keypair
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const privPem = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const pubPem = publicKey.export({ type: 'spki', format: 'pem' });
+  try {
+    fs.writeFileSync(NODE_KEY_FILE, privPem, { mode: 0o600 });
+    fs.writeFileSync(NODE_PUBKEY_FILE, pubPem);
+    console.log('🔑 Generated ed25519 keypair for node identity');
+  } catch (e) {
+    console.error('⚠ Could not persist keypair:', e.message);
+  }
+  return { privateKey, publicKey: pubPem.trim() };
+}
+
+function signPayload(data, privateKey) {
+  const payload = typeof data === 'string' ? data : JSON.stringify(data);
+  const sig = crypto.sign(null, Buffer.from(payload), privateKey);
+  return sig.toString('base64');
+}
+
+const nodeKeyPair = loadOrCreateKeyPair();
 
 function getLocalVersion() {
   try {
@@ -1136,12 +1172,13 @@ async function checkin() {
   // Build rich capability manifests from YAML specs
   const capabilityManifests = handlerScan?.manifests || {};
 
-  const result = await meshFetch('/nodes/register', {
-    method: 'POST',
-    body: JSON.stringify({
+  // Sign the registration payload with ed25519 key
+  const regData = {
       nodeId, name: NODE_NAME, owner: NODE_OWNER, region: NODE_REGION,
       capabilities, models, version: getLocalVersion(), 
       ...sysInfo,
+      publicKey: nodeKeyPair.publicKey,
+      timestamp: Date.now(),
       // Rich capability manifests (protocol v2)
       manifests: capabilityManifests,
       // Enhanced registration data
@@ -1159,7 +1196,15 @@ async function checkin() {
         withinLimits: resources.cpuOk && resources.ramOk,
         acceptingJobs: scheduleActive && resources.cpuOk && resources.ramOk
       }
-    })
+  };
+  // Sign the registration body
+  const regBody = JSON.stringify(regData);
+  const signature = signPayload(regBody, nodeKeyPair.privateKey);
+
+  const result = await meshFetch('/nodes/register', {
+    method: 'POST',
+    headers: { 'X-Node-Signature': signature },
+    body: regBody
   });
 
   if (result?.ok) {

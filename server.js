@@ -433,7 +433,15 @@ function jobToJSON(row) {
   };
 }
 
-function registerNode(data) {
+function verifyNodeSignature(body, signature, publicKeyPem) {
+  if (!signature || !publicKeyPem) return false;
+  try {
+    const key = crypto.createPublicKey(publicKeyPem);
+    return crypto.verify(null, Buffer.from(body), key, Buffer.from(signature, 'base64'));
+  } catch { return false; }
+}
+
+function registerNode(data, reqHeaders, rawBody) {
   // SECURITY: Basic validation for node registration
   const ip = data.ip || 'unknown';
   
@@ -473,6 +481,20 @@ function registerNode(data) {
   const gpuVRAM = Math.max(0, Math.min(131072, parseInt(data.gpuVRAM) || 0)); // 128GB max
   const diskFreeGB = Math.max(0, Math.min(1048576, parseInt(data.diskFreeGB) || 0)); // 1PB max
   
+  // SECURITY: Ed25519 node identity verification
+  const existingNode = stmts.getNode.get(id);
+  if (data.publicKey && reqHeaders?.['x-node-signature'] && rawBody) {
+    const sigValid = verifyNodeSignature(rawBody, reqHeaders['x-node-signature'], data.publicKey);
+    if (!sigValid) {
+      throw new Error('Node signature verification failed');
+    }
+    // If existing node has a different key, reject (key pinning)
+    if (existingNode?.publicKey && existingNode.publicKey !== data.publicKey) {
+      logger.error('node-key-mismatch', `Key mismatch for node ${id}`, { nodeId: id });
+      throw new Error('Public key mismatch — node identity conflict. If you regenerated keys, contact hub admin.');
+    }
+  }
+
   stmts.upsertNode.run({
     nodeId: id, name: data.name, ip: data.ip || 'unknown',
     capabilities: JSON.stringify(data.capabilities || []),
@@ -482,6 +504,10 @@ function registerNode(data) {
     owner: sanitizedOwner, region: sanitizedRegion,
     lastSeen: now, registeredAt: now
   });
+  // Store public key if provided and verified
+  if (data.publicKey) {
+    try { db.prepare('UPDATE nodes SET publicKey = ? WHERE nodeId = ?').run(data.publicKey, id); } catch {}
+  }
 
   // Founding Operator Logic
   try {
@@ -849,7 +875,7 @@ function handleWsMessage(nodeId, msg, ws) {
       // Update node resources
       if (msg.payload) {
         const data = { ...msg.payload, nodeId, ip: '' };
-        registerNode(data);
+        registerNode(data, null, null);
       }
       break;
     case 'job.claim':
@@ -894,13 +920,16 @@ function broadcastEvent(type, data) {
 }
 
 // ===== HTTP SERVER =====
-function parseBody(req) {
+function parseBody(req, returnRaw = false) {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
     req.on('end', () => {
-      try { resolve(JSON.parse(body)); }
-      catch { resolve({}); }
+      try {
+        const parsed = JSON.parse(body);
+        resolve(returnRaw ? { parsed, raw: body } : parsed);
+      }
+      catch { resolve(returnRaw ? { parsed: {}, raw: body } : {}); }
     });
     req.on('error', reject);
   });
@@ -1049,9 +1078,9 @@ const server = http.createServer(async (req, res) => {
     // ---- Node Registry ----
     if (method === 'POST' && pathname === '/nodes/register') {
       try {
-        const data = await parseBody(req);
+        const { parsed: data, raw: rawBody } = await parseBody(req, true);
         data.ip = getClientIp(req);
-        const node = registerNode(data);
+        const node = registerNode(data, req.headers, rawBody);
         return json(res, { ok: true, node });
       } catch (error) {
         logger.error('node-registration-failed', error.message, { ip: getClientIp(req) });
