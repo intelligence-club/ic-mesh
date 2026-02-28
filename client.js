@@ -504,7 +504,9 @@ async function runCustomHandler(job) {
   }
   
   // Create temporary directory for handler output
-  const tmpDir = path.join(os.tmpdir(), `ic-mesh-handler-${Date.now()}`);
+  // IC_MESH_CLIENT_TMPDIR_FIX: Force correct temp directory on Linux
+  const getCorrectTempDir = () => process.platform === 'linux' ? '/tmp' : os.tmpdir();
+  const tmpDir = path.join(getCorrectTempDir(), `ic-mesh-handler-${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
   env.HANDLER_OUTPUT_DIR = tmpDir;
   env.HANDLER_TEMP_DIR = tmpDir;
