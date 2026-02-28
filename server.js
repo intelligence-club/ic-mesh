@@ -487,7 +487,7 @@ function registerNode(data) {
 
     if (!existingFounding) {
       const currentFoundingCount = db.prepare(`
-        SELECT COUNT(*) as count FROM founding_operators WHERE isActive = 1
+        SELECT COUNT(*) as count FROM founding_operators WHERE status = 'active'
       `).get().count;
       
       if (currentFoundingCount < 50) {
@@ -1458,13 +1458,13 @@ const server = http.createServer(async (req, res) => {
         const foundingInfo = db.prepare(`
           SELECT joinOrder, earningMultiplier, registeredAt
           FROM founding_operators 
-          WHERE nodeId = ? AND isActive = 1
+          WHERE nodeId = ? AND status = 'active'
         `).get(nodeId);
         
         const totalFounding = db.prepare(`
           SELECT COUNT(*) as count 
           FROM founding_operators 
-          WHERE isActive = 1
+          WHERE status = 'active'
         `).get().count;
         
         const maxFounding = 50;
