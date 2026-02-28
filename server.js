@@ -109,7 +109,8 @@ db.exec(`
     refunded INTEGER DEFAULT 0,
     ints_cost INTEGER DEFAULT 0,
     error_message TEXT,
-    progress TEXT
+    progress TEXT,
+    retryCount INTEGER DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
   CREATE INDEX IF NOT EXISTS idx_jobs_claimedBy ON jobs(claimedBy);
@@ -427,7 +428,8 @@ function jobToJSON(row) {
     completedAt: row.completedAt,
     result: row.result ? JSON.parse(row.result) : null,
     progress: row.progress ? JSON.parse(row.progress) : null,
-    computeMs: row.computeMs, creditAmount: row.creditAmount
+    computeMs: row.computeMs, creditAmount: row.creditAmount,
+    retryCount: row.retryCount || 0
   };
 }
 
@@ -497,8 +499,8 @@ function registerNode(data) {
         const joinOrder = currentFoundingCount + 1;
         
         db.prepare(`
-          INSERT INTO founding_operators (nodeId, joinOrder, registeredAt, email, earningMultiplier)
-          VALUES (?, ?, ?, ?, 2.0)
+          INSERT INTO founding_operators (nodeId, slot_number, joined_at, email, benefits)
+          VALUES (?, ?, ?, ?, '{"multiplier": 2.0, "priority_routing": true}')
         `).run(id, joinOrder, now, data.owner || 'unknown');
         
         logger.info('founding-operator-added', `Node ${id} registered as founding operator #${joinOrder}`, {
@@ -1506,7 +1508,7 @@ const server = http.createServer(async (req, res) => {
       
       try {
         const foundingInfo = db.prepare(`
-          SELECT joinOrder, earningMultiplier, registeredAt
+          SELECT slot_number as joinOrder, benefits, joined_at as registeredAt
           FROM founding_operators 
           WHERE nodeId = ? AND status = 'active'
         `).get(nodeId);
@@ -1523,7 +1525,7 @@ const server = http.createServer(async (req, res) => {
           return json(res, {
             isFounding: true,
             joinOrder: foundingInfo.joinOrder,
-            earningMultiplier: foundingInfo.earningMultiplier,
+            earningMultiplier: JSON.parse(foundingInfo.benefits || '{"multiplier": 2.0}').multiplier,
             totalFounding,
             maxFounding,
             spotsRemaining: maxFounding - totalFounding,
@@ -2654,8 +2656,24 @@ storage.initSpaces().then(ok => {
 // Reap stale claimed jobs every 30s (no zombies)
 // Layer 1: Hard timeout per job type
 // Layer 2: If no progress update in 120s, assume dead
+// Layer 3: Max retries — fail permanently after too many attempts
 const JOB_CLAIM_TTL = { ping: 30000, inference: 300000, transcribe: 600000, 'generate-image': 600000, generate: 600000, default: 300000 };
 const PROGRESS_SILENCE_TTL = 120000; // 2 minutes without progress = dead
+const MAX_RETRIES = 3; // After 3 failed claims, mark job as failed
+
+function requeueOrFail(job, reason) {
+  const retries = (job.retryCount || 0) + 1;
+  if (retries >= MAX_RETRIES) {
+    console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) PERMANENTLY FAILED after ${retries} retries — ${reason}`);
+    db.prepare("UPDATE jobs SET status = 'failed', error_message = ?, retryCount = ? WHERE jobId = ?")
+      .run(`Failed after ${retries} attempts: ${reason}`, retries, job.jobId);
+  } else {
+    console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) ${reason} — requeuing (retry ${retries}/${MAX_RETRIES})`);
+    db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL, retryCount = ? WHERE jobId = ?")
+      .run(retries, job.jobId);
+  }
+}
+
 setInterval(() => {
   const claimed = stmts.getClaimedStale.all(Date.now() - 60000); // check anything claimed > 60s ago
   for (const job of claimed) {
@@ -2664,8 +2682,7 @@ setInterval(() => {
     
     // Hard timeout
     if (age > ttl) {
-      console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) HARD TIMEOUT after ${Math.round(age/1000)}s`);
-      db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+      requeueOrFail(job, `HARD TIMEOUT after ${Math.round(age/1000)}s`);
       continue;
     }
     
@@ -2673,8 +2690,7 @@ setInterval(() => {
     if (age > PROGRESS_SILENCE_TTL) {
       const hasProgress = job.progress && job.progress !== 'null';
       if (!hasProgress) {
-        console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) NO PROGRESS for ${Math.round(age/1000)}s — reclaiming`);
-        db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+        requeueOrFail(job, `NO PROGRESS for ${Math.round(age/1000)}s`);
         continue;
       }
       
@@ -2682,8 +2698,7 @@ setInterval(() => {
       try {
         const prog = JSON.parse(job.progress);
         if (prog._updated && Date.now() - prog._updated > PROGRESS_SILENCE_TTL) {
-          console.log(`◉ Reaper: job ${job.jobId.slice(0,8)} (${job.type}) STALE PROGRESS — reclaiming`);
-          db.prepare("UPDATE jobs SET status = 'pending', claimedBy = NULL, claimedAt = NULL, progress = NULL WHERE jobId = ?").run(job.jobId);
+          requeueOrFail(job, `STALE PROGRESS for ${Math.round((Date.now() - prog._updated)/1000)}s`);
         }
       } catch {}
     }
