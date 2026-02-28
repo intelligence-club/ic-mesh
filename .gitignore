@@ -24,3 +24,7 @@ node-config.json
 *.backup
 *.orig
 *.sample
+
+# Node key files
+.node-key
+.node-pubkey
