@@ -179,6 +179,17 @@ db.exec(`
     balance_ints INTEGER DEFAULT 0,
     last_updated TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS founding_operators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nodeId TEXT NOT NULL UNIQUE,
+    slot_number INTEGER NOT NULL UNIQUE,
+    joined_at INTEGER NOT NULL,
+    email TEXT NOT NULL,
+    benefits TEXT DEFAULT '{}',
+    status TEXT DEFAULT 'active',
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+  );
 `);
 
 // Add progress column if missing (migration)
