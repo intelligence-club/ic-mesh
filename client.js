@@ -821,7 +821,9 @@ async function runTranscribe(payload, timeoutMs) {
   const url = payload.url;
   if (!url) throw new Error('No audio URL provided');
 
-  const tmpDir = path.join(os.tmpdir(), 'ic-mesh-jobs');
+    // IC_MESH_CLIENT_TMPDIR_FIX: Force correct temp directory on Linux
+  const getCorrectTempDir = () => process.platform === 'linux' ? '/tmp' : os.tmpdir();
+  const tmpDir = path.join(getCorrectTempDir(), 'ic-mesh-jobs');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
   const ext = path.extname(new URL(url).pathname) || '.wav';
   const tmpFile = path.join(tmpDir, `transcribe-${Date.now()}${ext}`);

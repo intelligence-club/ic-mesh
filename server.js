@@ -2029,7 +2029,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---- API Key Creation ----
-    if (method === 'POST' && pathname === '/api/create_api_key') {
+    if (method === 'POST' && (pathname === '/api/create_api_key' || pathname === '/auth/create-api-key')) {
       try {
         // Generate API key: ic_ prefix + 64 hex characters
         const keyBytes = crypto.randomBytes(32);

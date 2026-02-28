@@ -5,8 +5,8 @@ aliases: [transcription, transcribe, stt]
 description: "Speech-to-text via whisper.cpp / whisper-cli"
 
 detect:
-  binary: whisper-cli
-  fallback_binaries: [whisper, whisper-cpp]
+  binary: whisper
+  fallback_binaries: [whisper-cli, whisper-cpp]
 
 models:
   scan_dirs:
@@ -18,7 +18,7 @@ models:
   parse_name: "ggml-(?<name>.+)\\.bin"
 
 invoke:
-  cmd: "ffmpeg -y -i {input} -ar 16000 -ac 1 {output_dir}/audio.wav -loglevel error && whisper-cli -m {model_path} -f {output_dir}/audio.wav --no-timestamps -t {threads} -otxt -of {output_dir}/output 2>&1 && cat {output_dir}/output.txt"
+  cmd: "ffmpeg -y -i {input} -ar 16000 -ac 1 {output_dir}/audio.wav -loglevel error && whisper {output_dir}/audio.wav --model {model_name} --output_dir {output_dir} --output_format txt --language en --threads {threads} 2>&1 && find {output_dir} -name '*.txt' -exec cat {} \\;"
   output: stdout
   result_type: text
 

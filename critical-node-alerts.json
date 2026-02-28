@@ -125,31 +125,120 @@
       "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
       "action": "Contact Drake to restore node",
       "alertId": "a47cd29ac23cf10e_7d"
+    },
+    {
+      "nodeId": "fcecb481aa501e7a",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 606068986,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "ollama",
+        "generate"
+      ],
+      "allCapabilities": [
+        "ollama",
+        "whisper",
+        "ffmpeg",
+        "tesseract",
+        "gpu-metal",
+        "transcribe",
+        "generate"
+      ],
+      "jobsCompleted": 43,
+      "lastSeen": "2026-02-21T00:16:23.107Z",
+      "alertTime": "2026-02-28T00:37:32.103Z",
+      "message": "🚨 CRITICAL: Node frigg (fcecb481) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: ollama, generate | Jobs completed: 43",
+      "action": "Contact Drake to restore node",
+      "alertId": "fcecb481aa501e7a_7d"
+    },
+    {
+      "nodeId": "a47cd29ac23cf10e",
+      "nodeName": "frigg",
+      "owner": "drake",
+      "severity": "CRITICAL",
+      "offlineDuration": 621068986,
+      "timeDescription": "7 days",
+      "capabilities": [
+        "stable-diffusion"
+      ],
+      "allCapabilities": [
+        "ffmpeg",
+        "gpu-metal",
+        "stable-diffusion"
+      ],
+      "jobsCompleted": 6,
+      "lastSeen": "2026-02-20T20:06:23.107Z",
+      "alertTime": "2026-02-28T00:37:32.104Z",
+      "message": "🚨 CRITICAL: Node frigg (a47cd29a) offline for 7 days",
+      "details": "Owner: drake | Critical capabilities: stable-diffusion | Jobs completed: 6",
+      "action": "Contact Drake to restore node",
+      "alertId": "a47cd29ac23cf10e_7d"
+    },
+    {
+      "nodeId": "4a5cde9ebc1a473a",
+      "nodeName": "local-node-2",
+      "owner": "mesh-repair",
+      "severity": "CRITICAL",
+      "offlineDuration": 1772239052093,
+      "timeDescription": "20512 days",
+      "capabilities": [
+        "stt"
+      ],
+      "allCapabilities": [
+        "tesseract",
+        "ocr",
+        "pdf-extract",
+        "whisper",
+        "transcription",
+        "transcribe",
+        "stt",
+        "ffmpeg",
+        "ping"
+      ],
+      "jobsCompleted": 226,
+      "lastSeen": "1970-01-01T00:00:00.000Z",
+      "alertTime": "2026-02-28T00:37:32.104Z",
+      "message": "🚨 CRITICAL: Node local-node-2 (4a5cde9e) offline for 20512 days",
+      "details": "Owner: mesh-repair | Critical capabilities: stt | Jobs completed: 226",
+      "action": "Contact mesh-repair or recruit replacement",
+      "alertId": "4a5cde9ebc1a473a_20512d"
     }
   ],
-  "lastCheck": 1772229668501,
+  "lastCheck": 1772239052093,
   "summary": {
-    "totalNodes": 6,
-    "activeNodes": 3,
-    "offlineNodes": 3,
-    "criticalAlertsGenerated": 2,
+    "totalNodes": 26,
+    "activeNodes": 22,
+    "offlineNodes": 4,
+    "criticalAlertsGenerated": 3,
     "criticalCapabilities": [
-      "tesseract",
-      "transcription",
       "ollama",
-      "transcribe",
+      "inference",
+      "llm",
+      "chat",
+      "stt",
       "generate",
       "stable-diffusion"
     ],
     "capabilityCount": {
       "test": 1,
-      "whisper": 3,
-      "ffmpeg": 4,
-      "tesseract": 2,
-      "transcription": 1,
-      "ollama": 1,
-      "gpu-metal": 3,
-      "transcribe": 1,
+      "ollama": 2,
+      "inference": 1,
+      "llm": 1,
+      "chat": 1,
+      "tesseract": 5,
+      "ocr": 4,
+      "pdf-extract": 4,
+      "whisper": 5,
+      "transcription": 19,
+      "transcribe": 3,
+      "stt": 2,
+      "ffmpeg": 7,
+      "gpu-metal": 4,
+      "ping": 4,
+      "TEST_MODE": 8,
       "generate": 1,
       "stable-diffusion": 1
     }
