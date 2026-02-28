@@ -2764,13 +2764,74 @@ setInterval(async () => {
   }
 }, 3600000);
 
-server.listen(PORT, '0.0.0.0', () => {
-  const nodeCount = stmts.getAllNodes.all().length;
-  const jobCount = db.prepare('SELECT COUNT(*) as c FROM jobs').get().c;
-  console.log(`◉ IC Mesh server v0.3.0 live on port ${PORT}`);
-  console.log(`  Storage: SQLite (${DB_PATH})`);
-  console.log(`  Transport: HTTP + WebSocket`);
-  console.log(`  Nodes: ${nodeCount} registered`);
-  console.log(`  Jobs: ${jobCount} total`);
-  console.log(`  Dashboard: http://localhost:${PORT}`);
+// Enhanced server startup with error handling and port fallback
+async function startServer(port, retries = 3) {
+  return new Promise((resolve, reject) => {
+    const server_attempt = server.listen(port, '0.0.0.0', () => {
+      const nodeCount = stmts.getAllNodes.all().length;
+      const jobCount = db.prepare('SELECT COUNT(*) as c FROM jobs').get().c;
+      console.log(`◉ IC Mesh server v0.3.0 live on port ${port}`);
+      console.log(`  Storage: SQLite (${DB_PATH})`);
+      console.log(`  Transport: HTTP + WebSocket`);
+      console.log(`  Nodes: ${nodeCount} registered`);
+      console.log(`  Jobs: ${jobCount} total`);
+      console.log(`  Dashboard: http://localhost:${port}`);
+      resolve(port);
+    });
+
+    server_attempt.on('error', async (err) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.warn('Server startup', `Port ${port} is busy, ${retries} retries left`);
+        console.log(`⚠️  Port ${port} is in use`);
+        
+        if (retries > 0) {
+          console.log(`   Trying port ${port + 1}...`);
+          try {
+            const fallback_port = await startServer(port + 1, retries - 1);
+            resolve(fallback_port);
+          } catch (fallback_err) {
+            reject(fallback_err);
+          }
+        } else {
+          console.error(`❌ Unable to find available port after multiple attempts`);
+          console.error(`   Try stopping other services or set PORT environment variable`);
+          logger.error('Server startup', 'All port attempts failed', { initial_port: PORT, last_attempted: port });
+          reject(err);
+        }
+      } else {
+        logger.error('Server startup', err.message, { port, error_code: err.code });
+        console.error(`❌ Server failed to start: ${err.message}`);
+        reject(err);
+      }
+    });
+  });
+}
+
+// Graceful shutdown handling
+process.on('SIGINT', () => {
+  console.log('\n📋 Shutting down IC Mesh server...');
+  logger.info('Server shutdown', 'Graceful shutdown initiated');
+  server.close(() => {
+    console.log('✅ Server stopped');
+    if (wss) wss.close();
+    if (db) db.close();
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n📋 Received SIGTERM, shutting down...');
+  logger.info('Server shutdown', 'SIGTERM received');
+  server.close(() => {
+    if (wss) wss.close();
+    if (db) db.close();
+    process.exit(0);
+  });
+});
+
+// Start server with enhanced error handling
+startServer(PORT).catch(err => {
+  console.error('Fatal: Server startup failed:', err.message);
+  logger.error('Server startup', 'Fatal startup failure', { error: err.message });
+  process.exit(1);
 });
