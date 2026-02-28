@@ -544,9 +544,9 @@ function registerNode(data, reqHeaders, rawBody) {
         const joinOrder = currentFoundingCount + 1;
         
         db.prepare(`
-          INSERT INTO founding_operators (nodeId, slot_number, joined_at, email, benefits)
-          VALUES (?, ?, ?, ?, '{"multiplier": 2.0, "priority_routing": true}')
-        `).run(id, joinOrder, now, data.owner || 'unknown');
+          INSERT INTO founding_operators (nodeId, slot_number, joined_at, email, benefits, created_at)
+          VALUES (?, ?, ?, ?, '{"multiplier": 2.0, "priority_routing": true}', ?)
+        `).run(id, joinOrder, now, data.owner || 'unknown', now);
         
         logger.info('founding-operator-added', `Node ${id} registered as founding operator #${joinOrder}`, {
           nodeId: id, joinOrder, owner: data.owner
