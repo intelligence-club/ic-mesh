@@ -12,3 +12,15 @@ health-state.json
 # SQLite temporary files
 mesh.db-shm
 mesh.db-wal
+
+# Runtime data
+*.sqlite
+*.db
+node.log
+*.jsonl
+node-config.json
+.node-id*
+
+*.backup
+*.orig
+*.sample

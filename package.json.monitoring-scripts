@@ -1,7 +1,0 @@
-{
-  "scripts": {
-    "monitor:critical": "node critical-capability-monitor.js",
-    "monitor:json": "node critical-capability-monitor.js --json",
-    "monitor:alert": "node critical-capability-monitor.js --exit-on-alert"
-  }
-}
