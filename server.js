@@ -451,8 +451,10 @@ function registerNode(data) {
     throw new Error('Node name is required and must be 1-64 characters');
   }
   
-  // Sanitize owner field
-  const sanitizedOwner = (data.owner || 'unknown').replace(/[<>'"&]/g, '');
+  // Sanitize text fields to prevent XSS
+  data.name = (data.name || '').replace(/[<>'"&;]/g, '').slice(0, 64);
+  const sanitizedOwner = (data.owner || 'unknown').replace(/[<>'"&;]/g, '').slice(0, 64);
+  const sanitizedRegion = (data.region || 'unknown').replace(/[<>'"&;]/g, '').slice(0, 64);
   
   // Dedup: if client sends an ID we know, use it. Otherwise match by name+owner.
   let id = data.nodeId;
@@ -475,7 +477,7 @@ function registerNode(data) {
     models: JSON.stringify(data.models || []),
     manifests: JSON.stringify(data.manifests || {}),
     cpuCores, ramMB, ramFreeMB, cpuIdle, gpuVRAM, diskFreeGB,
-    owner: sanitizedOwner, region: data.region || 'unknown',
+    owner: sanitizedOwner, region: sanitizedRegion,
     lastSeen: now, registeredAt: now
   });
 
@@ -1305,6 +1307,27 @@ const server = http.createServer(async (req, res) => {
           detail: 'Provide job-specific parameters in the payload field',
           example: examples[data.type] || { type: data.type, payload: { url: 'https://example.com/file' } }
         }, 400);
+      }
+      
+      // SECURITY: Rate limit job submissions (30/min per IP)
+      if (!global._jobRateLimit) global._jobRateLimit = {};
+      const jobNow = Date.now();
+      const jobHistory = (global._jobRateLimit[clientIp] || []).filter(t => jobNow - t < 60000);
+      if (jobHistory.length >= 30) {
+        return json(res, { error: 'Job submission rate limit exceeded (30/min). Please wait.' }, 429);
+      }
+      global._jobRateLimit[clientIp] = [...jobHistory, jobNow];
+      
+      // SECURITY: Validate URLs in payload — block SSRF
+      if (data.payload?.url) {
+        try {
+          const jobUrl = new URL(data.payload.url);
+          const h = jobUrl.hostname;
+          const blocked = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^0\./, /^::1$/, /^fc00/i, /^fe80/i, /metadata/i];
+          if (blocked.some(p => p.test(h))) {
+            return json(res, { error: 'URL blocked: internal/private addresses not allowed', detail: 'Job URLs must point to publicly accessible resources' }, 400);
+          }
+        } catch { /* non-URL payloads are fine */ }
       }
       
       // Capability-specific payload validation

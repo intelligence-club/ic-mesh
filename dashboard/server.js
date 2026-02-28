@@ -229,8 +229,8 @@ class DashboardServer {
         return new Promise((resolve) => {
             this.server = this.app.listen(this.port, () => {
                 console.log(`🔒 IC Mesh Dashboard Server started on port ${this.port}`);
-                console.log(`🌐 Dashboard: http://localhost:${this.port}/dashboard?token=${this.authToken}`);
-                console.log(`🔑 Auth Token: ${this.authToken}`);
+                console.log(`🌐 Dashboard: http://localhost:${this.port}/dashboard?token=${this.authToken.substring(0, 8)}...`);
+                console.log(`🔑 Auth Token: ${this.authToken.substring(0, 8)}...`);
                 console.log(`📊 Monitoring: ${this.meshServerUrl}`);
                 console.log('');
                 console.log('Security Features:');
