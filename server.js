@@ -1320,10 +1320,14 @@ const server = http.createServer(async (req, res) => {
       }
       global._jobRateLimit[clientIp] = [...jobHistory, jobNow];
       
-      // SECURITY: Validate URLs in payload — block SSRF
+      // SECURITY: Validate URLs in payload — block SSRF, file://, and dangerous protocols
       if (data.payload?.url) {
         try {
           const jobUrl = new URL(data.payload.url);
+          // Block non-HTTP protocols
+          if (!['http:', 'https:'].includes(jobUrl.protocol)) {
+            return json(res, { error: `URL protocol '${jobUrl.protocol}' not allowed. Use http: or https:`, detail: 'Only HTTP(S) URLs are accepted' }, 400);
+          }
           const h = jobUrl.hostname;
           const blocked = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^0\./, /^::1$/, /^fc00/i, /^fe80/i, /metadata/i];
           if (blocked.some(p => p.test(h))) {
