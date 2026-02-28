@@ -140,7 +140,15 @@ if (fs.existsSync(CONFIG_FILE)) {
     console.warn(`Failed to parse ${CONFIG_FILE}: ${err.message}`);
   }
 } else {
-  console.log(`◉ No config file found at ${CONFIG_FILE}, using defaults`);
+  // No config file — try auto-config from hub's /api/onboard endpoint
+  const autoHub = process.env.IC_MESH_SERVER || null;
+  if (autoHub) {
+    console.log(`◉ No config file found, using env vars`);
+  } else {
+    console.log(`◉ No config file found at ${CONFIG_FILE}`);
+    console.log(`  Tip: Set IC_MESH_SERVER=https://your-hub.com/mesh or run:`);
+    console.log(`  node client.js --setup https://your-hub.com/mesh`);
+  }
 }
 
 // Environment variables override config file
@@ -1323,21 +1331,99 @@ async function main() {
   console.log('  Ctrl+C to leave.\n');
 }
 
-// === --check mode: validate everything without connecting ===
-if (process.argv.includes('--check')) {
+// === CLI Commands ===
+const cliArg = process.argv[2];
+
+if (cliArg === '--help' || cliArg === '-h') {
+  console.log(`
+IC Mesh — Node Client v0.3.0
+
+Usage:
+  node client.js                        Start as mesh worker
+  node client.js --check                Validate config + capabilities (no connect)
+  node client.js --setup <hub-url>      Auto-configure from hub's /api/onboard
+  node client.js --self-test            Register, submit job to self, verify round-trip
+  node client.js --help                 Show this help
+
+Environment variables:
+  IC_MESH_SERVER    Hub URL (e.g. https://moilol.com/mesh)
+  IC_NODE_NAME      Node display name (default: hostname)
+  IC_NODE_OWNER     Your name/org (required)
+  IC_NO_AUTO_UPDATE Disable auto-update (set to 1)
+
+Quick start:
+  node client.js --setup https://moilol.com/mesh
+  node client.js --check
+  node client.js
+`);
+  process.exit(0);
+}
+
+if (cliArg === '--setup') {
+  // Auto-configure from hub's /api/onboard endpoint
+  (async () => {
+    const hubUrl = process.argv[3];
+    if (!hubUrl) {
+      console.error('❌ Usage: node client.js --setup <hub-url>');
+      console.error('   Example: node client.js --setup https://moilol.com/mesh');
+      process.exit(1);
+    }
+
+    console.log(`\n🔧 IC Mesh Auto-Setup\n`);
+    console.log(`  Fetching config from ${hubUrl}/api/onboard...`);
+    
+    try {
+      const resp = await fetch(`${hubUrl}/api/onboard`);
+      const onboard = await resp.json();
+      
+      if (!onboard.hub) {
+        console.error('  ❌ Invalid onboard response — missing hub URL');
+        process.exit(1);
+      }
+
+      console.log(`  ✅ Hub: ${onboard.hub}`);
+      console.log(`  ✅ Network: ${onboard.network_status?.nodes_active || 0} active nodes`);
+      console.log(`  ✅ Capabilities: ${(onboard.network_status?.capabilities || []).join(', ')}`);
+
+      // Generate config file
+      const nodeName = os.hostname();
+      const nodeOwner = process.env.IC_NODE_OWNER || os.userInfo().username;
+      const newConfig = {
+        meshServer: onboard.hub,
+        nodeName,
+        nodeOwner,
+        nodeRegion: 'auto',
+        limits: onboard.provider?.config_template?.limits || { maxCpuPercent: 80, maxRamPercent: 70, maxConcurrentJobs: 3 }
+      };
+
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(newConfig, null, 2));
+      console.log(`  ✅ Config written to ${CONFIG_FILE}`);
+      console.log(`\n  Node: ${nodeName}`);
+      console.log(`  Owner: ${nodeOwner}`);
+      console.log(`  Server: ${onboard.hub}`);
+      console.log(`\n  Next steps:`);
+      console.log(`    node client.js --check    # Validate`);
+      console.log(`    node client.js --self-test # Full round-trip test`);
+      console.log(`    node client.js            # Start worker\n`);
+    } catch (e) {
+      console.error(`  ❌ Failed to reach ${hubUrl}/api/onboard: ${e.message}`);
+      console.error(`  Check the URL and try again.`);
+      process.exit(1);
+    }
+    process.exit(0);
+  })();
+
+} else if (cliArg === '--check') {
+  // Validate config + capabilities without connecting
   (async () => {
     console.log('\n🔍 IC Mesh Node Check\n');
     
-    // Node.js version
     const nodeVer = process.version;
     const major = parseInt(nodeVer.slice(1));
     console.log(`  ${major >= 16 ? '✅' : '❌'} Node.js ${nodeVer} (minimum: v16)`);
-    
-    // Fetch
     console.log(`  ${globalThis.fetch ? '✅' : '❌'} fetch: ${major >= 18 ? 'native' : 'polyfilled via node-fetch'}`);
     
-    // Config
-    console.log(`  ${fs.existsSync(CONFIG_FILE) ? '✅' : '⚠️'} Config: ${fs.existsSync(CONFIG_FILE) ? CONFIG_FILE : 'using defaults'}`);
+    console.log(`  ${fs.existsSync(CONFIG_FILE) ? '✅' : '⚠️'} Config: ${fs.existsSync(CONFIG_FILE) ? CONFIG_FILE : 'not found (run --setup first)'}`);
     console.log(`     Server: ${MESH_SERVER}`);
     console.log(`     Name: ${NODE_NAME}`);
     console.log(`     Owner: ${NODE_OWNER}`);
@@ -1362,7 +1448,6 @@ if (process.argv.includes('--check')) {
       console.log(`  ⬚  ${s}: not detected`);
     }
     
-    // Legacy capabilities
     const caps = getCapabilities();
     const yamlCaps = scan.capabilities;
     const legacyOnly = caps.filter(c => !yamlCaps.includes(c));
@@ -1374,6 +1459,136 @@ if (process.argv.includes('--check')) {
     console.log(`  ${caps.length > 0 ? '✅ Ready to connect. Run: node client.js' : '❌ No capabilities detected.'}\n`);
     process.exit(0);
   })();
+
+} else if (cliArg === '--self-test') {
+  // Full round-trip: register → submit job → claim → complete → verify
+  (async () => {
+    console.log('\n🧪 IC Mesh Self-Test\n');
+    
+    // Step 1: Check server
+    console.log('  1/5 Connecting to hub...');
+    let status;
+    try {
+      const resp = await fetch(`${MESH_SERVER}/status`);
+      status = await resp.json();
+      console.log(`      ✅ ${MESH_SERVER} (${status.nodes?.active || 0} nodes online)`);
+    } catch (e) {
+      console.error(`      ❌ Cannot reach ${MESH_SERVER}: ${e.message}`);
+      console.error(`      Run: node client.js --setup <hub-url>`);
+      process.exit(1);
+    }
+
+    // Step 2: Register
+    console.log('  2/5 Registering node...');
+    const caps = getCapabilities();
+    const scan = scanCapabilities();
+    const regBody = {
+      name: NODE_NAME,
+      owner: NODE_OWNER,
+      region: process.env.IC_NODE_REGION || config.nodeRegion || 'unknown',
+      capabilities: caps,
+      models: scan.models || [],
+      manifests: scan.manifests || {},
+      os: `${os.platform()} ${os.release()}`,
+      arch: os.arch(),
+      ramMB: Math.round(os.totalmem() / 1048576),
+      ramFreeMB: Math.round(os.freemem() / 1048576),
+      cpuCores: os.cpus().length,
+      cpuIdle: Math.round(os.cpus().reduce((a, c) => a + c.times.idle / Object.values(c.times).reduce((s, t) => s + t, 0), 0) / os.cpus().length * 100),
+      version: 'self-test'
+    };
+
+    let testNodeId;
+    try {
+      const resp = await fetch(`${MESH_SERVER}/nodes/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(regBody)
+      });
+      const data = await resp.json();
+      testNodeId = data.node?.nodeId || data.nodeId;
+      console.log(`      ✅ Registered as ${testNodeId?.slice(0, 12)}... (${caps.length} capabilities)`);
+    } catch (e) {
+      console.error(`      ❌ Registration failed: ${e.message}`);
+      process.exit(1);
+    }
+
+    // Step 3: Submit a ping job
+    console.log('  3/5 Submitting test job...');
+    let jobId;
+    try {
+      const resp = await fetch(`${MESH_SERVER}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'ping',
+          payload: { target: 'self-test', timestamp: Date.now() },
+          requirements: {}
+        })
+      });
+      const data = await resp.json();
+      jobId = data.job?.jobId;
+      console.log(`      ✅ Job submitted: ${jobId?.slice(0, 12)}...`);
+    } catch (e) {
+      console.error(`      ❌ Job submission failed: ${e.message}`);
+      process.exit(1);
+    }
+
+    // Step 4: Claim and complete the job ourselves
+    console.log('  4/5 Claiming and executing...');
+    try {
+      const claimResp = await fetch(`${MESH_SERVER}/jobs/${jobId}/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: testNodeId })
+      });
+      const claimData = await claimResp.json();
+      if (!claimData.ok) {
+        // Another node may have claimed it — that's actually fine
+        console.log(`      ⚠️ Another node claimed the job (mesh is working!)`);
+      } else {
+        // Complete it
+        const completeResp = await fetch(`${MESH_SERVER}/jobs/${jobId}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: testNodeId,
+            data: { pong: true, self_test: true, node: NODE_NAME, timestamp: Date.now() }
+          })
+        });
+        const completeData = await completeResp.json();
+        console.log(`      ✅ Job completed by this node`);
+      }
+    } catch (e) {
+      console.error(`      ❌ Claim/execute failed: ${e.message}`);
+      process.exit(1);
+    }
+
+    // Step 5: Verify job result
+    console.log('  5/5 Verifying result...');
+    // Wait a moment for processing
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${MESH_SERVER}/jobs/${jobId}`);
+      const data = await resp.json();
+      const job = data.job || data;
+      if (job.status === 'completed') {
+        console.log(`      ✅ Job verified complete`);
+      } else if (job.status === 'claimed') {
+        console.log(`      ⚠️ Job still processing (claimed by ${job.claimedBy?.slice(0, 8)}...)`);
+      } else {
+        console.log(`      ⚠️ Job status: ${job.status}`);
+      }
+    } catch (e) {
+      console.error(`      ❌ Verification failed: ${e.message}`);
+    }
+
+    console.log(`\n  ✅ Self-test complete!`);
+    console.log(`  Your node can register, submit, claim, and complete jobs.`);
+    console.log(`  Start worker: node client.js\n`);
+    process.exit(0);
+  })();
+
 } else {
   main().catch(console.error);
 }

@@ -487,7 +487,7 @@ function registerNode(data) {
 
     if (!existingFounding) {
       const currentFoundingCount = db.prepare(`
-        SELECT COUNT(*) as count FROM founding_operators WHERE status = 'active'
+        SELECT COUNT(*) as count FROM founding_operators WHERE isActive = 1
       `).get().count;
       
       if (currentFoundingCount < 50) {
@@ -1458,13 +1458,13 @@ const server = http.createServer(async (req, res) => {
         const foundingInfo = db.prepare(`
           SELECT joinOrder, earningMultiplier, registeredAt
           FROM founding_operators 
-          WHERE nodeId = ? AND status = 'active'
+          WHERE nodeId = ? AND isActive = 1
         `).get(nodeId);
         
         const totalFounding = db.prepare(`
           SELECT COUNT(*) as count 
           FROM founding_operators 
-          WHERE status = 'active'
+          WHERE isActive = 1
         `).get().count;
         
         const maxFounding = 50;
@@ -1807,46 +1807,10 @@ const server = http.createServer(async (req, res) => {
       return json(res, {
         protocol: 'IC Mesh Protocol v2.0',
         hub: hubUrl,
-        setup: {
-          description: 'Fastest path from zero to running node',
-          one_liner: `git clone https://github.com/intelligence-club/ic-mesh.git && cd ic-mesh && npm install --production && node client.js --setup ${hubUrl}`,
-          steps: [
-            `git clone https://github.com/intelligence-club/ic-mesh.git`,
-            `cd ic-mesh && npm install --production`,
-            `node client.js --setup ${hubUrl}`,
-            `node client.js --check`,
-            `node client.js --self-test`,
-            `node client.js`
-          ]
-        },
-        auth: {
-          provider: {
-            method: 'none (open registration)',
-            description: 'Nodes register by calling POST /nodes/register. No API key needed. Node receives a unique nodeId on first registration, persisted to .node-id file.',
-            trust_model: 'Reputation-based. New nodes can claim jobs immediately. Failed jobs reduce reputation score.'
-          },
-          client: {
-            method: 'API key (for paid jobs)',
-            description: 'Free jobs (ping, test) need no auth. Paid jobs require an API key + ints balance.',
-            flow: [
-              '1. POST /api/keys { email } → returns api_key',
-              '2. POST /api/buy-credits { email, pack: "5000" } → Stripe checkout → ints credited',
-              '3. POST /api/transcribe (with X-API-Key header) → job submitted, ints deducted'
-            ],
-            note: 'API keys and ints are managed by the payment server (moilol.com), not the mesh hub. The mesh hub handles job dispatch; the payment server handles billing.'
-          }
-        },
         network_status: {
           nodes_active: activeCount,
-          capabilities: [...new Set(Object.values(activeNodes).flatMap(n => n.capabilities))].filter(c => !['ping', 'ffmpeg', 'TEST_MODE'].includes(c)).sort(),
-          all_capabilities: [...new Set(Object.values(activeNodes).flatMap(n => n.capabilities))].sort(),
+          capabilities: [...new Set(Object.values(activeNodes).flatMap(n => n.capabilities))].sort(),
           accepting_jobs: true
-        },
-        routing: {
-          strategy: 'race-to-claim',
-          description: 'Nodes poll for jobs matching their capabilities. First valid claim wins.',
-          debug_endpoint: `${hubUrl}/routing`,
-          factors: ['capability match', 'affinity key (30min TTL)', 'poll timing']
         },
         provider: {
           description: 'Connect your hardware as a compute node',
@@ -1932,70 +1896,7 @@ const server = http.createServer(async (req, res) => {
           treasuryMinutes: Math.round(treasury.earned * 100) / 100
         },
         websocket: { connected: wsClients.size },
-        uptime: Math.round(process.uptime()),
-        routing: {
-          strategy: 'race-to-claim',
-          description: 'Nodes poll for available jobs and claim them. First valid claim wins.',
-          factors: ['capability match', 'affinity (session locality)', 'creation order (oldest first)']
-        }
-      });
-    }
-
-    // Job routing visibility — explains why jobs go where they go
-    if (method === 'GET' && pathname === '/routing') {
-      const active = getActiveNodes();
-      const recentJobs = db.prepare(`
-        SELECT j.jobId, j.type, j.status, j.claimedBy, j.createdAt, j.completedAt,
-          (SELECT name FROM nodes WHERE nodeId = j.claimedBy) as node_name
-        FROM jobs j ORDER BY j.createdAt DESC LIMIT 20
-      `).all();
-
-      // Success rates per node (last 100 jobs)
-      const nodeStats = db.prepare(`
-        SELECT claimedBy as nodeId,
-          (SELECT name FROM nodes WHERE nodeId = jobs.claimedBy) as name,
-          COUNT(*) as total,
-          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-          ROUND(AVG(CASE WHEN computeMs > 0 THEN computeMs END)) as avg_compute_ms
-        FROM jobs WHERE claimedBy IS NOT NULL
-        GROUP BY claimedBy ORDER BY total DESC
-      `).all();
-
-      return json(res, {
-        strategy: {
-          type: 'race-to-claim',
-          description: 'Nodes poll GET /jobs/available every 10s. Hub returns jobs matching node capabilities. First POST /jobs/{id}/claim wins.',
-          factors: [
-            'Capability match — node must have required capability',
-            'Affinity — jobs with affinity_key prefer previously-used nodes (30min TTL)',
-            'Poll timing — nodes with lower latency to hub claim faster',
-            'Capacity — hub filters by CPU/RAM thresholds'
-          ],
-          why_one_node_gets_everything: 'If one node polls faster (e.g., localhost or lower latency), it wins the race. This is by design — first capable node wins. Future: hub-side dispatch with load balancing.'
-        },
-        node_stats: nodeStats.map(n => ({
-          nodeId: n.nodeId?.slice(0, 12) + '...',
-          name: n.name,
-          jobs_total: n.total,
-          jobs_completed: n.completed,
-          jobs_failed: n.failed,
-          success_rate: n.total > 0 ? Math.round(n.completed / n.total * 100) + '%' : 'n/a',
-          avg_compute_ms: n.avg_compute_ms
-        })),
-        recent_jobs: recentJobs.map(j => ({
-          jobId: j.jobId?.slice(0, 12) + '...',
-          type: j.type,
-          status: j.status,
-          claimed_by: j.node_name || j.claimedBy?.slice(0, 12),
-          age_seconds: Math.round((Date.now() - j.createdAt) / 1000)
-        })),
-        active_nodes: Object.entries(active).map(([id, n]) => ({
-          nodeId: id.slice(0, 12) + '...',
-          name: n.name,
-          capabilities: (n.capabilities || []).filter(c => !['ping', 'ffmpeg'].includes(c)),
-          poll_mode: n.wsConnected ? 'websocket' : 'http'
-        }))
+        uptime: process.uptime()
       });
     }
     
