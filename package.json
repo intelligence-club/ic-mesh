@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "client": "node client.js",
-    "test": "node test-comprehensive-enhanced.js",
+    "test": "node test.js",
     "test:ci": "timeout 30s node server.js & SERVER_PID=$!; sleep 2; node test.js; kill $SERVER_PID",
     "test:watch": "while true; do node test.js; echo 'Press Ctrl+C to stop, or any key to rerun...'; read -t 5; done",
     "lint": "find . -name '*.js' -not -path './node_modules/*' -exec node -c {} \\;",
