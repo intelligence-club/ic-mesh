@@ -73,13 +73,13 @@
     "logging:demo": "node demo-logging-example.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.996.0",
-    "@aws-sdk/s3-request-presigner": "^3.996.0",
+    "@aws-sdk/client-s3": "^3.893.0",
+    "@aws-sdk/s3-request-presigner": "^3.893.0",
     "better-sqlite3": "^12.6.2",
     "express": "^4.18.2",
     "express-rate-limit": "^6.7.0",
     "node-fetch": "^2.7.0",
-    "sqlite3": "^5.1.7",
+    "sqlite3": "^5.0.2",
     "ws": "^8.19.0",
     "yaml": "^2.8.2"
   }
